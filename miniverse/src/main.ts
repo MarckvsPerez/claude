@@ -70,7 +70,7 @@ async function main() {
 
   // Auto-discover agents from server and available sprites
   const availableSprites: string[] = await fetch('/api/citizens').then(r => r.json()).catch(() => ['lead']);
-  const serverAgents: { agent: string; name: string }[] = await fetch('http://localhost:4321/api/agents')
+  const serverAgents: { agent: string; name: string; state?: string }[] = await fetch('http://localhost:4321/api/agents')
     .then(r => r.json())
     .then((d: any) => d.agents ?? [])
     .catch(() => []);
@@ -81,7 +81,9 @@ async function main() {
   const roleDefs: { agentId: string; name: string; sprite: string; position: string }[] =
     sceneData?.citizens ?? [];
   const knownIds = new Set(roleDefs.map(d => d.agentId));
-  const extraAgents = serverAgents.filter(a => !knownIds.has(a.agent));
+  // Agents outside world.json only while they are online: the server keeps every agent that
+  // ever sent a heartbeat (an older bridge's per-role ids, other projects), offline forever.
+  const extraAgents = serverAgents.filter(a => !knownIds.has(a.agent) && a.state !== 'offline');
   const extraAnchors = workAnchors.filter(name => !roleDefs.some(d => d.position === name));
 
   // Team: roles that work standing (the lead plans at the whiteboard). Their
