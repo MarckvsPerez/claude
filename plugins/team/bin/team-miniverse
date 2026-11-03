@@ -4,7 +4,8 @@
 #   team-miniverse          start the server if needed and build this project's office;
 #                           opens the window only when it starts the server or the project changed
 #   team-miniverse --open   same, and always open the window
-#   team-miniverse --stop   stop the server it started
+#   team-miniverse --stop   stop the server it started (not the login item's: use
+#                           miniverse/scripts/login-item.sh uninstall for that)
 #
 # Runs from the team plugin's SessionStart hook (async) and by hand. Only acts if the project's
 # .claude/team.json has "miniverse". The Miniverse app lives in the directory set by the
@@ -68,13 +69,21 @@ build_office() {
 OPEN=false
 [[ "${1:-}" == "--open" ]] && OPEN=true
 
+LAUNCH_AGENT="com.marcperez.miniverse"
+
 if ! up "$URL/api/agents"; then
   if [[ ! -d "$APP_DIR/node_modules" ]]; then
     (cd "$APP_DIR" && npm install --no-fund --no-audit) >>"$LOG" 2>&1
   fi
   build_office
-  # Own process group, detached from the session, so it outlives the hook.
-  (cd "$APP_DIR" && set -m && nohup npm run dev >>"$LOG" 2>&1 & echo $! >"$PIDFILE")
+  if launchctl print "gui/$(id -u)/$LAUNCH_AGENT" >/dev/null 2>&1; then
+    # The login item (miniverse/scripts/login-item.sh) owns the server: ask launchd to start it
+    # instead of starting a second one that would fight it for the ports.
+    launchctl kickstart "gui/$(id -u)/$LAUNCH_AGENT" >>"$LOG" 2>&1
+  else
+    # Own process group, detached from the session, so it outlives the hook.
+    (cd "$APP_DIR" && set -m && nohup npm run dev >>"$LOG" 2>&1 & echo $! >"$PIDFILE")
+  fi
   for _ in $(seq 1 30); do
     up "$URL/api/agents" && up "$VIEW" && break
     sleep 0.5
