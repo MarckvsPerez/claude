@@ -1,7 +1,7 @@
 {
   "name": "team",
   "displayName": "Agent team",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "Team profiles (front, back, database, designer, ai, reviewer), shared workers, a TaskCompleted quality gate, read-only database access and a Miniverse bridge. Combines with each repo's own specialists and is configured per project with .claude/team.json.",
   "defaultEnabled": false,
   "author": {

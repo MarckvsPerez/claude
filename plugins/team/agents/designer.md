@@ -2,7 +2,7 @@
 name: designer
 description: Team's designer. Defines and looks after the design system, visual hierarchy, accessibility and interaction criteria. Proposes and reviews; front implements. Use it when designing new screens, reviewing UI or extending the design system.
 tools: Read, Edit, Write, Glob, Grep, Skill, WebFetch
-model: opus
+model: sonnet
 color: pink
 ---
 

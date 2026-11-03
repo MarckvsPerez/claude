@@ -4,7 +4,10 @@
 #
 # Configured in .claude/team.json → gate:
 #   ignore: patterns (shell globs) of files that don't trigger checks
-#   checks: [{ name, when: [patterns], run: "command" }]
+#   checks: [{ name, when: [patterns], run: "command", cwd: "optional/subfolder" }]
+#     {files} in `run` becomes the changed files that match `when` (quoted, relative to `cwd`),
+#     so lint touches only what changed. Slow, whole-project checks (build, full suite) go in
+#     gate.final instead: the reviewer runs those once, at the end of the change.
 # Without team.json or without checks, it does nothing.
 #
 # The scope comes from the files changed in the working tree, which the whole team shares.
@@ -72,10 +75,35 @@ done
 LOG="$(mktemp)"
 trap 'rmdir "$LOCK" 2>/dev/null; rm -f "$LOG"' EXIT
 
+# Changed files that match a check's `when` and still exist, shell-quoted and relative to
+# its `cwd`, to replace {files} in `run` (lint only what changed instead of the whole repo).
+files_for() { # files_for <check index> <cwd>
+  local when file rel out=""
+  when="$(jq -r ".gate.checks[$1].when // [] | .[]" "$CONFIG")"
+  while IFS= read -r file; do
+    [[ -z "$file" || ! -f "$file" ]] && continue
+    matches_any "$file" "$when" || continue
+    rel="$file"
+    if [[ -n "$2" ]]; then
+      [[ "$file" == "$2/"* ]] || continue
+      rel="${file#"$2"/}"
+    fi
+    out+=" $(printf '%q' "$rel")"
+  done <<<"$RELEVANT"
+  printf '%s' "${out# }"
+}
+
 for i in "${TO_RUN[@]}"; do
   NAME="$(jq -r ".gate.checks[$i].name // \"check $i\"" "$CONFIG")"
   RUN="$(jq -r ".gate.checks[$i].run" "$CONFIG")"
-  if ! bash -c "$RUN" >"$LOG" 2>&1; then
+  CWD="$(jq -r ".gate.checks[$i].cwd // empty" "$CONFIG")"
+  CWD="${CWD%/}"
+  if [[ "$RUN" == *"{files}"* ]]; then
+    FILES="$(files_for "$i" "$CWD")"
+    [[ -n "$FILES" ]] || continue # only deletions: nothing to lint
+    RUN="${RUN//\{files\}/$FILES}"
+  fi
+  if ! (cd "$ROOT/${CWD:-.}" && bash -c "$RUN") >"$LOG" 2>&1; then
     {
       echo "Can't close '$TASK_SUBJECT': the '$NAME' check fails ($RUN)."
       echo "Last lines of the output:"

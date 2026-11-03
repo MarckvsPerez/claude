@@ -3,12 +3,18 @@
   "roles": {
     "front": {
       "agent": "team:front",
-      "owns": ["src/ui/*", "src/styles/*"],
+      "owns": [
+        "src/ui/*",
+        "src/styles/*"
+      ],
       "context": "docs/agents/front.md"
     },
     "back": {
       "agent": "team:back",
-      "owns": ["src/api/*", "migrations/*"]
+      "owns": [
+        "src/api/*",
+        "migrations/*"
+      ]
     },
     "database": {
       "agent": "team:database",
@@ -16,11 +22,16 @@
     },
     "designer": {
       "agent": "team:designer",
-      "owns": ["docs/design/*", "src/styles/tokens.css"]
+      "owns": [
+        "docs/design/*",
+        "src/styles/tokens.css"
+      ]
     },
     "ai": {
       "agent": "team:ai",
-      "owns": ["src/ai/*"]
+      "owns": [
+        "src/ai/*"
+      ]
     },
     "reviewer": {
       "agent": "team:reviewer",
@@ -29,16 +40,61 @@
     "legal": {
       "agent": "legal",
       "owns": [],
-      "description": "Repo-specific specialist, defined in .claude/agents/legal.md"
+      "description": "Repo-specific specialist, defined in .claude/agents/legal.md",
+      "model": "opus"
     }
   },
   "gate": {
-    "ignore": ["*.md", "docs/*", "openspec/*", ".claude/*", ".gitignore"],
-    "checks": [
-      { "name": "web", "when": ["src/*", "package.json", "*.ts"], "run": "npm run typecheck && npm run lint && npm test" },
-      { "name": "api", "when": ["api/*"], "run": "npm --prefix api test" }
+    "ignore": [
+      "*.md",
+      "docs/*",
+      "openspec/*",
+      ".claude/*",
+      ".gitignore"
     ],
-    "review": true
+    "checks": [
+      {
+        "name": "typecheck",
+        "when": [
+          "src/*",
+          "*.ts",
+          "*.tsx",
+          "tsconfig.json",
+          "package.json"
+        ],
+        "run": "npx tsc --noEmit --incremental"
+      },
+      {
+        "name": "lint",
+        "when": [
+          "src/*.ts",
+          "src/*.tsx",
+          "src/*.js",
+          "src/*.jsx"
+        ],
+        "run": "npx eslint --cache --max-warnings=0 {files}"
+      },
+      {
+        "name": "api",
+        "when": [
+          "api/*"
+        ],
+        "cwd": "api",
+        "run": "npx eslint --cache {files}"
+      }
+    ],
+    "final": [
+      {
+        "name": "build",
+        "run": "npm run build"
+      },
+      {
+        "name": "tests",
+        "run": "npm test"
+      }
+    ],
+    "review": true,
+    "reviewMinLines": 40
   },
   "database": {
     "engine": "mysql",

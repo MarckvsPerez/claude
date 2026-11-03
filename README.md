@@ -6,6 +6,7 @@ Personal Claude Code plugin marketplace.
 |---|---|
 | [`team`](plugins/team/README.md) | Generic agent team (front, back, database, designer, ai, reviewer) that combines with each repo's own specialists. Off by default |
 | [`guardrails`](plugins/guardrails/README.md) | Safety rules enforced with hooks: no commit or push, database writes only on local databases, confirmation before destructive changes. On everywhere |
+| [`sdd`](plugins/sdd/README.md) | Spec-Driven Development orchestrator on demand: `/sdd:new`, `/sdd:continue`, `/sdd:ff`. The protocol loads only when you use them |
 
 ## Install
 
@@ -13,6 +14,7 @@ Personal Claude Code plugin marketplace.
 claude plugin marketplace add ~/Code/agent-team-kit
 claude plugin install guardrails@marcperez-plugins
 claude plugin install team@marcperez-plugins
+claude plugin install sdd@marcperez-plugins
 ```
 
 Then, in each repo where you want the team:

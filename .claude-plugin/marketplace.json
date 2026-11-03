@@ -15,6 +15,11 @@
       "name": "guardrails",
       "source": "./plugins/guardrails",
       "description": "Safety rules enforced with hooks: no commit or push, database writes only on local databases, confirmation before destructive changes."
+    },
+    {
+      "name": "sdd",
+      "source": "./plugins/sdd",
+      "description": "Spec-Driven Development orchestrator on demand: the protocol loads only with /sdd:new, /sdd:continue or /sdd:ff."
     }
   ]
 }

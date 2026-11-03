@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Runs the project's gate.checks once, outside a task: the TaskCompleted hook only fires when a
+# task closes, and a size S change (team:lead's triage) has no tasks.
+# Usage, from the project root: team-gate "<what changed>"
+# Exits 0 when everything passes (or nothing applies) and 2 with the failure on stderr.
+
+set -uo pipefail
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do SOURCE="$(readlink "$SOURCE")"; done
+PLUGIN="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+
+jq -n --arg subject "${*:-manual check}" --arg cwd "$PWD" '{task_subject: $subject, cwd: $cwd}' \
+  | "$PLUGIN/scripts/quality-gate.sh"

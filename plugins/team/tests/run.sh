@@ -63,6 +63,27 @@ echo y >>"$R/api/y.ts"
 check "gate: passing check" 0 "$(gate "$R")"
 echo z >>"$R/web/x.ts"
 check "gate: failing check" 2 "$(gate "$R")"
+# {files}: only the changed files that match the check's `when`, quoted, existing ones only;
+# with `cwd`, the check runs there and the paths are relative to it.
+F="$TMP/gate-files"
+mkdir -p "$F/.claude" "$F/web/src" "$F/api"
+git -C "$F" init -q && git -C "$F" config user.email t@t && git -C "$F" config user.name t
+jq -n --arg out "$TMP/files.out" --arg cwdout "$TMP/cwd.out" '{gate: {checks: [
+  {name: "lint", when: ["web/*"], run: ("printf \"[%s]\\n\" {files} > " + $out)},
+  {name: "scoped", when: ["web/*"], cwd: "web", run: ("{ pwd -P; printf \"[%s]\\n\" {files}; } > " + $cwdout)}]}}' >"$F/.claude/team.json"
+echo a >"$F/web/src/a.ts"; echo b >"$F/web/src/gone.ts"; echo c >"$F/api/c.ts"
+git -C "$F" add -A && git -C "$F" commit -qm init
+echo x >>"$F/web/src/a.ts"; echo y >"$F/web/src/new file.ts"; echo z >>"$F/api/c.ts"; rm "$F/web/src/gone.ts"
+check "gate {files}: passes" 0 "$(gate "$F")"
+check "gate {files}: only matching existing files, quoted" "$(printf '[web/src/a.ts]\n[web/src/new file.ts]')" "$(cat "$TMP/files.out" 2>/dev/null)"
+check "gate cwd: runs in cwd with relative paths" "$(printf '%s\n[src/a.ts]\n[src/new file.ts]' "$(cd "$F/web" && pwd -P)")" "$(cat "$TMP/cwd.out" 2>/dev/null)"
+
+# team-gate: the same checks on demand, outside a task (size S path of team:lead)
+team_gate() { (cd "$1" && env -u CLAUDE_PROJECT_DIR "$PLUGIN/bin/team-gate" "palette" >"$TMP/tg.out" 2>&1); echo $?; }
+check "team-gate: passing checks" 0 "$(team_gate "$F")"
+check "team-gate: failing check" 2 "$(team_gate "$R")"
+if grep -q "Can't close 'palette'" "$TMP/tg.out"; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); echo "FAIL: team-gate: reports the failure → $(cat "$TMP/tg.out")"; fi
+
 mkdir -p "$TMP/no-config"
 check "gate: project without team.json" 0 "$(gate "$TMP/no-config")"
 check "gate: releases the lock" 0 "$(ls "${TMPDIR:-/tmp}"/team-gate-*.lock 2>/dev/null | wc -l | tr -d ' ')"

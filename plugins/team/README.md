@@ -3,7 +3,7 @@
 A generic agent team for Claude Code. Install it once and enable it in the projects that use it.
 
 ```
-LEAD  (the main session; skill team:lead)
+LEAD  (the main session; /team:run or skill team:lead)
   ├── team:front      UI builder
   ├── team:back       API, logic and migrations builder
   ├── team:database   read-only data auditor
@@ -34,16 +34,42 @@ LEAD
 |---|---|
 | `agents/` | 6 profiles and 3 workers |
 | `skills/setup` | `/team:setup`: reads the project, proposes roles and generates its configuration |
-| `skills/lead` | Lead protocol: create, split, coordinate and close |
+| `skills/run` | `/team:run <change>`: sizes the change and runs it with the lead protocol |
+| `skills/lead` | Lead protocol: size, create, split, coordinate and close |
 | `hooks/hooks.json` | TaskCompleted (checks + quick review), database guard and Miniverse bridge |
 | `bin/db-query` | Read-only queries on the local database, for the database agent |
+| `bin/team-gate` | Runs the `gate.checks` once outside a task, for size S changes |
 | `templates/` | Project configuration (`team.example.json`) and specialist template |
 
 Agents reply to the user in the language they write in, even though their definitions are in English.
 
 ## Per-project configuration
 
-Everything project-specific lives in `.claude/team.json`: for each role, which agent covers it (`agent`), which files it owns (`owns`) and its addendum (`context`); plus the quality checks, the read-only database connection and Miniverse. **Without that file the hooks do nothing**, not even the database guard.
+Everything project-specific lives in `.claude/team.json`: for each role, which agent covers it (`agent`), which files it owns (`owns`) its addendum (`context`) and, optionally, a stronger model (`model`); plus the quality checks, the read-only database connection and Miniverse.
+
+### Sizes
+
+The lead sizes every change before creating anyone (`/team:run` or the `team:lead` skill):
+
+| Size | When | How it runs |
+|---|---|---|
+| **S** | One role, ≤ 5 files, ≤ 150 lines, no contract, not risky | One plain subagent of that role, then `team-gate` once. No team, no reviewer |
+| **M** | 2–3 roles, a contract between roles, or a small risky change | Only the affected roles + `reviewer` |
+| **L** | 4+ roles, an openspec change, or risky and large | Full team, **after you confirm** |
+
+Risk (money, permissions, authentication, personal data, migrations) raises the size to at least M. Writing "size S/M/L" in the request overrides the lead's choice.
+
+### Cost
+
+Every profile runs on sonnet by default (haiku for `explorer` and `test-runner`). `opus` is reserved for roles with `"model": "opus"` in team.json and for the `reviewer` of risky changes (money, permissions, authentication, personal data, migrations), which the lead raises on its own.
+
+The quality gate runs every time a task closes, so it is split by cost:
+
+| Key | When it runs | What goes there |
+|---|---|---|
+| `gate.checks` | Every closed task, by the TaskCompleted hook | Fast, scoped checks: `tsc --noEmit --incremental`, `eslint --cache {files}`. `{files}` becomes the changed files matching `when`; `cwd` runs the check in a subfolder with relative paths |
+| `gate.final` | Once, by the `reviewer` at the end | Slow, whole-project checks: build, full suite |
+| `gate.review` + `gate.reviewMinLines` | Every closed task above the threshold | Sonnet review of the task's diff; smaller tasks are left to the final reviewer | **Without that file the hooks do nothing**, not even the database guard.
 
 A plugin can't set environment variables, so each project turns on in its `.claude/settings.json`:
 

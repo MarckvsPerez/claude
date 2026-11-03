@@ -1,0 +1,12 @@
+{
+  "name": "sdd",
+  "displayName": "SDD orchestrator",
+  "version": "0.1.0",
+  "description": "Spec-Driven Development orchestrator on demand. The protocol loads only when you run /sdd:new, /sdd:continue or /sdd:ff, instead of living in the global CLAUDE.md of every session and subagent.",
+  "author": {
+    "name": "Marc Pérez",
+    "email": "marcantoniperez@gmail.com"
+  },
+  "license": "UNLICENSED",
+  "keywords": ["sdd", "spec-driven-development", "orchestrator", "engram"]
+}
