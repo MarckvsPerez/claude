@@ -116,6 +116,15 @@ if curl -s -m 1 -o /dev/null http://127.0.0.1:4321/api/agents; then
   check "bridge: repo agent past the annex desks shows as the lead's work" "working|r5 · Read · terms.md" "$(state_of team-test-lead)"
   check "bridge: repo agent past the annex desks gets no character" "" "$(state_of team-test-r5)"
   check "bridge: teammate works as its profile, labelled with its role" "working|front-admin · Edit · Admin.tsx" "$(state_of team-test-front)"
+  # In a teammate's own events agent_type is its role name, not its profile.
+  bridge '{"hook_event_name":"PreToolUse","tool_name":"Bash","agent_type":"front-admin"}'
+  AGENTS="$(curl -s -m 2 http://127.0.0.1:4321/api/agents)"
+  check "bridge: agent_type with a role name works as its profile" "working|front-admin · Bash" "$(state_of team-test-front)"
+  check "bridge: agent_type with a role name isn't the lead's work" "working|r5 · Read · terms.md" "$(state_of team-test-lead)"
+  bridge '{"hook_event_name":"SessionEnd","agent_type":"front-admin"}'
+  AGENTS="$(curl -s -m 2 http://127.0.0.1:4321/api/agents)"
+  check "bridge: a teammate's SessionEnd only puts its own character to sleep" "sleeping|null" "$(state_of team-test-front)"
+  check "bridge: a teammate's SessionEnd leaves the others alone" "working|Grep" "$(state_of team-test-explorer)"
   for a in team-test-front team-test-motion team-test-explorer team-test-lead; do
     curl -s -o /dev/null -X POST http://127.0.0.1:4321/api/agents/remove -H 'Content-Type: application/json' -d "{\"agent\":\"$a\"}"
   done

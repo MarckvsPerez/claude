@@ -68,22 +68,23 @@ beat() {
 EVENT="$(field .hook_event_name)"
 TOOL="$(field .tool_name)"
 
-# Who works: the event's agent type ("team:front" → "front", "pagos" → "pagos"); in agent-team
-# events without one, the teammate's team.json role, through its "agent"; nothing for the
-# main session, which is the lead. A teammate whose role name differs from its agent
+# Who works: the event's agent type, or else its teammate name; nothing for the main session,
+# which is the lead. In a teammate's own events agent_type is the TEAMMATE's name, i.e. its
+# team.json role ("front-admin"), not its profile ("team:front"). So a name that is a role
+# key resolves through that role's "agent"; any other name is an agent itself
+# ("team:front" → "front", "pagos" → "pagos"). A role whose name differs from its agent
 # ("front-admin" running team:front) labels its tasks with the role.
-AGENT_TYPE="$(field .agent_type)"
+NAME="$(field .agent_type)"
+[[ -n "$NAME" ]] || NAME="$(field .teammate_name)"
 WHO=""
 ROLE_LABEL=""
-if [[ -n "$AGENT_TYPE" ]]; then
-  WHO="${AGENT_TYPE#team:}"
-else
-  TEAMMATE="$(field .teammate_name)"
-  if [[ -n "$TEAMMATE" ]]; then
-    WHO="$(jq -r --arg r "$TEAMMATE" '.roles[$r].agent // empty' "$CONFIG" 2>/dev/null)"
+if [[ -n "$NAME" ]]; then
+  WHO="$(jq -r --arg r "$NAME" '.roles[$r].agent // empty' "$CONFIG" 2>/dev/null)"
+  if [[ -n "$WHO" ]]; then
     WHO="${WHO#team:}"
-    [[ -n "$WHO" ]] || WHO="$TEAMMATE"
-    [[ "$(slug "$WHO")" == "$(slug "$TEAMMATE")" ]] || ROLE_LABEL="$TEAMMATE"
+    [[ "$(slug "$WHO")" == "$(slug "$NAME")" ]] || ROLE_LABEL="$NAME"
+  else
+    WHO="${NAME#team:}"
   fi
 fi
 WHO="$(slug "$WHO")"
@@ -100,6 +101,13 @@ tool_label() {
   file="$(field '.tool_input.file_path')"
   if [[ -n "$file" ]]; then echo "$PREFIX$TOOL · ${file##*/}"; else echo "$PREFIX$TOOL"; fi
 }
+
+# A teammate's own session starting or ending only touches its character; only the lead's
+# session (no agent) sets up or closes the whole office.
+if [[ -n "$WHO" && ( "$EVENT" == "SessionStart" || "$EVENT" == "SessionEnd" ) ]]; then
+  [[ -z "$FOREIGN" ]] && beat "$ROLE" sleeping
+  exit 0
+fi
 
 case "$EVENT" in
   SessionStart)
