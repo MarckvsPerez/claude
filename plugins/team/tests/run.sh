@@ -97,12 +97,14 @@ if curl -s -m 1 -o /dev/null http://127.0.0.1:4321/api/agents; then
   bridge '{"hook_event_name":"PreToolUse","tool_name":"Edit","agent_type":"three","tool_input":{"file_path":"/a/Scene.tsx"}}'
   bridge '{"hook_event_name":"PreToolUse","tool_name":"Grep","agent_type":"team:explorer"}'
   bridge '{"hook_event_name":"UserPromptSubmit","prompt":"secret-text"}'
+  bridge '{"hook_event_name":"PreToolUse","tool_name":"Glob","agent_type":"general-purpose"}'
   AGENTS="$(curl -s http://127.0.0.1:4321/api/agents)"
   state_of() { jq -r --arg a "$1" '.agents[] | select(.agent == $a) | "\(.state)|\(.task)"' <<<"$AGENTS"; }
   check "bridge: base profile under its role" "working|Read · App.tsx" "$(state_of team-test-front)"
   check "bridge: repo specialist under its team.json role" "working|Edit · Scene.tsx" "$(state_of team-test-motion)"
   check "bridge: worker outside team.json without prefix" "working|Grep" "$(state_of team-test-explorer)"
-  check "bridge: main session is the lead" "thinking|Thinking" "$(state_of team-test-lead)"
+  check "bridge: built-in agent shows as the lead's work" "working|general-purpose · Glob" "$(state_of team-test-lead)"
+  check "bridge: built-in agent gets no character" "" "$(state_of team-test-general-purpose)"
   check "bridge: doesn't send the prompt" 0 "$(grep -c secret-text <<<"$AGENTS")"
   for a in team-test-front team-test-motion team-test-explorer team-test-lead; do
     curl -s -o /dev/null -X POST http://127.0.0.1:4321/api/agents/remove -H 'Content-Type: application/json' -d "{\"agent\":\"$a\"}"

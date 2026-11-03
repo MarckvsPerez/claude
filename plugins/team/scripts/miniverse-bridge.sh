@@ -44,22 +44,30 @@ TOOL="$(field .tool_name)"
 
 # Role: the team.json role whose "agent" is the event's agent type (so a repo specialist
 # and a plugin profile both show up under their role name); otherwise the teammate name
-# in team events; otherwise the type without its plugin prefix ("team:front" → "front");
+# in team events; otherwise a plugin profile without its prefix ("team:front" → "front");
 # and "lead" for the main session.
+# Any other agent type (Claude Code built-ins such as general-purpose, Explore or Plan, or
+# another plugin's agents) is not a team role: it gets no character of its own and shows
+# up as the lead's work, labelled with its type. Otherwise every ad-hoc type would add a
+# character that SessionEnd never puts offline.
 AGENT_TYPE="$(field .agent_type)"
 ROLE=""
+FOREIGN=""
 if [[ -n "$AGENT_TYPE" ]]; then
   ROLE="$(jq -r --arg t "$AGENT_TYPE" '[.roles // {} | to_entries[] | select(.value.agent == $t) | .key][0] // empty' "$CONFIG" 2>/dev/null)"
 fi
 [[ -n "$ROLE" ]] || ROLE="$(field .teammate_name)"
-[[ -n "$ROLE" ]] || ROLE="${AGENT_TYPE##*:}"
+if [[ -z "$ROLE" && -n "$AGENT_TYPE" ]]; then
+  if [[ "$AGENT_TYPE" == team:* ]]; then ROLE="${AGENT_TYPE#team:}"; else FOREIGN="$AGENT_TYPE"; fi
+fi
 [[ -n "$ROLE" ]] || ROLE="lead"
 ROLE="$(slug "$ROLE")"
+PREFIX="${FOREIGN:+$FOREIGN · }"
 
 tool_label() {
   local file
   file="$(field '.tool_input.file_path')"
-  if [[ -n "$file" ]]; then echo "$TOOL · ${file##*/}"; else echo "$TOOL"; fi
+  if [[ -n "$file" ]]; then echo "$PREFIX$TOOL · ${file##*/}"; else echo "$PREFIX$TOOL"; fi
 }
 
 case "$EVENT" in
@@ -74,8 +82,10 @@ case "$EVENT" in
   PreToolUse) beat "$ROLE" working "$(tool_label)" ;;
   PostToolUse) beat "$ROLE" working "Done: $(tool_label)" ;;
   PostToolUseFailure) beat "$ROLE" error "Failed: $(tool_label)" ;;
-  SubagentStart) beat "$ROLE" working "Starting" ;;
-  SubagentStop | TeammateIdle | Stop) beat "$ROLE" idle ;;
+  SubagentStart) beat "$ROLE" working "${PREFIX}Starting" ;;
+  # A foreign subagent finishing doesn't mean the lead is idle: it still has its result.
+  SubagentStop) if [[ -n "$FOREIGN" ]]; then beat lead working "${PREFIX}Done"; else beat "$ROLE" idle; fi ;;
+  TeammateIdle | Stop) beat "$ROLE" idle ;;
   TaskCompleted)
     SUBJECT="$(field .task_subject)"
     beat "$ROLE" speaking "Completed: ${SUBJECT:0:50}"

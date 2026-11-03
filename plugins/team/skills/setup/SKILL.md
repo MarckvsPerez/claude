@@ -19,11 +19,17 @@ With the `team:explorer` worker or with Read, Grep and Glob, find out:
 - The layout: where the UI, the API, the migrations, the styles and design tokens, the code that calls AI models and the documentation live.
 - How quality is checked: typecheck, lint and test scripts for each package. Tell unit tests apart from tests that write to a database.
 - The local database: engine, `docker compose` and published port, and the environment file with its variable names. **Don't read or show secret values**: names only.
+- **What is already set up**, because the project may have been configured before (by an earlier setup or by hand):
+  - `.claude/team.json`: if it exists, this run adjusts it; it doesn't start from scratch.
+  - The project's own agents in `.claude/agents/*.md`: read each one's description, model and what it really covers.
+  - Context addenda already written (the `context` files team.json points to, `docs/agents/`).
+  - A quality gate, database guard or Miniverse hooks of the project's own in `.claude/settings.json` or `.claude/settings.local.json`, and the scripts they call. With the plugin on they would run twice.
 
 ## 2. Propose and wait for confirmation
 
 Present the user a proposal with:
 
+- **What already exists and what happens to it**, first, as a table with one row per existing agent, addendum and hook: keep as a repo specialist, replace with a base profile plus an addendum (say which rules move to the addendum), or retire, each with its reason. A project agent that only repeats a base profile is replaced; one that brings its own judgement stays. If `.claude/team.json` exists, present the rest of the proposal as the changes to it (roles added, removed or modified, gate changes), not as a new file.
 - **Base profiles** needed from the plugin's (`front`, `back`, `database`, `designer`, `ai`, `reviewer`) and which don't apply, with the reason.
 - **Repo specialists**: what this project needs that no base profile covers well, such as a specific regulation (`legal`), a payment provider (`payments`) or a very specific technology (`three` for 3D and motion). Only when they bring their own judgement; don't duplicate a base profile under another name.
 - **Context addenda** for the base profiles: what a base profile needs to know about this repo (versions, conventions, critical modules). One file per role, for example `docs/agents/front.md`, instead of copying the whole definition.
@@ -42,18 +48,18 @@ Present the user a proposal with:
 
 After confirmation:
 
-1. Write `.claude/team.json` following the template `${CLAUDE_PLUGIN_ROOT}/templates/team.example.json`. Each role has `agent` (`team:<profile>` for base profiles, the repo agent's name for specialists), `owns` and, if they apply, `context` and `model`. Patterns are shell globs: `src/*` includes subfolders.
-   - For each specialist, create `.claude/agents/<name>.md` from `${CLAUDE_PLUGIN_ROOT}/templates/specialist.md`, with the repo's concrete criteria.
-   - For each addendum, create the `context` file with concrete, verifiable rules, not generalities.
+1. Write `.claude/team.json` following the template `${CLAUDE_PLUGIN_ROOT}/templates/team.example.json`, or apply the confirmed changes to the existing one, keeping the keys you weren't asked to change. Each role has `agent` (`team:<profile>` for base profiles, the repo agent's name for specialists), `owns` and, if they apply, `context` and `model`. Patterns are shell globs: `src/*` includes subfolders.
+   - Reuse before creating. An existing specialist is referenced by its name, and an existing addendum by its path; don't overwrite them. Edit one only for a change the user confirmed.
+   - For each new specialist, create `.claude/agents/<name>.md` from `${CLAUDE_PLUGIN_ROOT}/templates/specialist.md`, with the repo's concrete criteria.
+   - For each new addendum, create the `context` file with concrete, verifiable rules, not generalities. When a project agent is replaced, its repo-specific rules move to the addendum before the agent is retired.
 2. In the project's `.claude/settings.json`, add without removing what's already there:
    ```json
    { "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1", "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1" } }
    ```
    Explain why it goes here and not in the global configuration: with agent teams on, any named subagent Claude launches becomes a teammate, and that isn't wanted in every project. Task tools are off by default on newer models, and without them there is no shared task list and TaskCompleted never fires.
 3. If there is a database: don't create the user yourself. Write to `.claude/db/readonly-user.sql` the SQL to create a SELECT-only user on the local database, for the user to run, and tell them which variables to add to their environment file.
-4. Add a short "Agent team" section to `AGENTS.md` or `CLAUDE.md`: the active roles, that the lead creates them from the `agent` in `.claude/team.json`, that changes go through `/team:run <change>` (or the `team:lead` skill), which sizes them first so small changes don't create a team.
-5. If the project already had its own agents in `.claude/agents/`, decide with the user which become team specialists, which are replaced by a base profile with an addendum, and which are retired. They coexist with the plugin's (`front` and `team:front` are different agents).
-6. If the project already had its own quality gate, database guard or Miniverse hooks in `.claude/settings.json`, point them out: with the plugin on they would run twice. Propose removing them, but don't delete them without confirmation.
+4. Add a short "Agent team" section to `AGENTS.md` or `CLAUDE.md`, or replace the existing one if it describes an earlier setup: the active roles, that the lead creates them from the `agent` in `.claude/team.json`, that changes go through `/team:run <change>` (or the `team:lead` skill), which sizes them first so small changes don't create a team.
+5. Carry out what the table in step 2 decided for the existing agents and hooks. Retire agents and remove hooks only when the user confirmed it for that item, and keep a copy first outside the repo (for example in `~/.claude/backups/<date>/<project>/`), unless git already tracks the file unchanged. Project agents that stay coexist with the plugin's (`front` and `team:front` are different agents).
 
 ## 4. Check
 
