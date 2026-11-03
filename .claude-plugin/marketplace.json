@@ -1,0 +1,20 @@
+{
+  "name": "marcperez-plugins",
+  "description": "Marc Pérez's personal Claude Code plugins for working safely with agent teams.",
+  "owner": {
+    "name": "Marc Pérez",
+    "email": "marcantoniperez@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "team",
+      "source": "./plugins/team",
+      "description": "Generic agent team: profiles, workers, quality gates and Miniverse visualisation. Off by default; enable it per repo."
+    },
+    {
+      "name": "guardrails",
+      "source": "./plugins/guardrails",
+      "description": "Safety rules enforced with hooks: no commit or push, database writes only on local databases, confirmation before destructive changes."
+    }
+  ]
+}

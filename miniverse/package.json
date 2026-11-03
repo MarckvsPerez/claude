@@ -1,0 +1,22 @@
+{
+  "name": "miniverse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n vite,server -c cyan,magenta \"vite --host 127.0.0.1 --port 5180 --strictPort\" \"miniverse --no-browser\"",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "miniverse",
+    "office": "node scripts/build-office.mjs"
+  },
+  "dependencies": {
+    "@miniverse/core": "^0.2.0",
+    "@miniverse/server": "^0.2.0"
+  },
+  "devDependencies": {
+    "@miniverse/generate": "^0.2.0",
+    "concurrently": "^9.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.0"
+  }
+}

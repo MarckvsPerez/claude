@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Starts the general Miniverse for the current project's team and opens it in its own window.
+#
+#   team-miniverse          start the server if needed and build this project's office;
+#                           opens the window only when it starts the server or the project changed
+#   team-miniverse --open   same, and always open the window
+#   team-miniverse --stop   stop the server it started
+#
+# Runs from the team plugin's SessionStart hook (async) and by hand. Only acts if the project's
+# .claude/team.json has "miniverse". The Miniverse app lives in the directory set by the
+# plugin's miniverse_dir option, team.json's miniverse.app, or ../../miniverse next to the plugin.
+#
+# The window is Chrome in app mode (--app): no tabs or address bar. Replacing it with an
+# Electron shell only means changing open_window below.
+
+set -uo pipefail
+
+STATE="$HOME/.claude/team-miniverse"
+mkdir -p "$STATE"
+LOG="$STATE/server.log"
+PIDFILE="$STATE/server.pid"
+
+if [[ "${1:-}" == "--stop" ]]; then
+  if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    # npm run dev starts vite and the server as children: stop the whole process group.
+    kill -- "-$(cat "$PIDFILE")" 2>/dev/null || kill "$(cat "$PIDFILE")"
+    echo "team-miniverse: stopped"
+  else
+    echo "team-miniverse: not running"
+  fi
+  rm -f "$PIDFILE" "$STATE/project"
+  exit 0
+fi
+
+ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+CONFIG="$ROOT/.claude/team.json"
+[[ -f "$CONFIG" ]] || exit 0
+URL="$(jq -r '.miniverse.url // empty' "$CONFIG")"
+[[ -n "$URL" ]] || exit 0
+VIEW="$(jq -r '.miniverse.view // "http://127.0.0.1:5180"' "$CONFIG")"
+
+APP_DIR="${CLAUDE_PLUGIN_OPTION_MINIVERSE_DIR:-}"
+[[ -n "$APP_DIR" ]] || APP_DIR="$(jq -r '.miniverse.app // empty' "$CONFIG")"
+[[ -n "$APP_DIR" ]] || APP_DIR="$(cd "$(dirname "$0")/../../.." 2>/dev/null && pwd)/miniverse"
+APP_DIR="${APP_DIR/#\~/$HOME}"
+if [[ ! -f "$APP_DIR/package.json" ]]; then
+  echo "team-miniverse: Miniverse app not found in $APP_DIR (set the plugin's miniverse_dir option)" >&2
+  exit 0
+fi
+
+PROJECT="$(jq -r '.project // empty' "$CONFIG")"
+[[ -n "$PROJECT" ]] || PROJECT="$(basename "$ROOT")"
+
+up() { curl -s -m 1 -o /dev/null "$1"; }
+
+open_window() {
+  if [[ -d "/Applications/Google Chrome.app" ]]; then
+    open -na "Google Chrome" --args --app="$VIEW" --window-size=1080,980
+  else
+    open "$VIEW"
+  fi
+}
+
+build_office() {
+  (cd "$APP_DIR" && node scripts/build-office.mjs --team "$CONFIG") >>"$LOG" 2>&1
+}
+
+OPEN=false
+[[ "${1:-}" == "--open" ]] && OPEN=true
+
+if ! up "$URL/api/agents"; then
+  if [[ ! -d "$APP_DIR/node_modules" ]]; then
+    (cd "$APP_DIR" && npm install --no-fund --no-audit) >>"$LOG" 2>&1
+  fi
+  build_office
+  # Own process group, detached from the session, so it outlives the hook.
+  (cd "$APP_DIR" && set -m && nohup npm run dev >>"$LOG" 2>&1 & echo $! >"$PIDFILE")
+  for _ in $(seq 1 30); do
+    up "$URL/api/agents" && up "$VIEW" && break
+    sleep 0.5
+  done
+  OPEN=true
+elif [[ "$(cat "$STATE/project" 2>/dev/null)" != "$PROJECT" ]]; then
+  build_office
+  OPEN=true
+fi
+
+printf '%s\n' "$PROJECT" >"$STATE/project"
+$OPEN && open_window
+exit 0

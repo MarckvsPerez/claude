@@ -1,0 +1,12 @@
+{
+  "name": "guardrails",
+  "displayName": "Guardrails",
+  "version": "0.2.0",
+  "description": "Enforces with hooks the rules that can't be left to the model's memory: no commit or push, database writes only on local databases, and confirmation before discarding changes or deleting outside the project.",
+  "author": {
+    "name": "Marc Pérez",
+    "email": "marcantoniperez@gmail.com"
+  },
+  "license": "UNLICENSED",
+  "keywords": ["safety", "hooks", "git", "database"]
+}

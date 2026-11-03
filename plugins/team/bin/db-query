@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# The database agent's only door to the database: read-only queries against the project's
+# LOCAL database, with a user that only has SELECT. It is on the PATH of Claude's Bash tool
+# while the plugin is enabled.
+#
+# Usage (SQL always through a heredoc with a quoted delimiter):
+#   db-query [--db other_db] <<'SQL'
+#   SELECT COUNT(*) FROM orders
+#   SQL
+#
+# Configured in .claude/team.json → database (see templates/team.example.json).
+# Supported engines: mysql.
+
+set -euo pipefail
+
+fail() { echo "db-query: $*" >&2; exit 1; }
+
+ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+CONFIG="$ROOT/.claude/team.json"
+[[ -f "$CONFIG" ]] || fail "no .claude/team.json in $ROOT"
+cfg() { jq -r ".database.$1 // empty" "$CONFIG"; }
+
+ENGINE="$(cfg engine)"
+[[ "$ENGINE" == "mysql" ]] || fail "engine '${ENGINE:-undefined}' not supported (mysql only)"
+
+ENV_FILE="$ROOT/$(cfg envFile)"
+[[ -f "$ENV_FILE" ]] || fail "environment file $(cfg envFile) not found"
+# Reads a key without sourcing: the file is never executed.
+env_value() {
+  local value
+  value="$(grep -E "^$1=" "$ENV_FILE" | tail -n 1 | cut -d= -f2-)"
+  value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
+  printf '%s' "$value"
+}
+
+DB_NAME="$(env_value "$(cfg nameVar)")"
+if [[ "${1:-}" == "--db" ]]; then
+  [[ "${2:-}" =~ ^[A-Za-z0-9_]+$ ]] || fail "--db needs a valid database name"
+  DB_NAME="$2"
+  shift 2
+fi
+(( $# == 0 )) || fail "the SQL goes through stdin (heredoc), not as an argument"
+
+HOST="$(cfg host)"; HOST="${HOST:-127.0.0.1}"
+PORT="$(cfg port)"; PORT="${PORT:-3306}"
+RO_USER="$(env_value "$(cfg userVar)")"
+RO_PASSWORD="$(env_value "$(cfg passwordVar)")"
+[[ -n "$DB_NAME" ]] || fail "missing database name ($(cfg nameVar))"
+[[ -n "$RO_USER" && -n "$RO_PASSWORD" ]] || fail "missing read-only user or password ($(cfg userVar), $(cfg passwordVar))"
+
+# 1. The SQL: a single read statement, no comments (MySQL executes /*! ... */).
+SQL="$(cat)"
+SQL="${SQL%"${SQL##*[![:space:]]}"}"
+SQL="${SQL%;}"
+[[ -n "$SQL" ]] || fail "empty SQL"
+[[ "$SQL" != *";"* ]] || fail "only one statement per call is allowed"
+if grep -Eq -- '--|/\*|#' <<<"$SQL"; then fail "comments are not allowed in the SQL"; fi
+FIRST_WORD="$(tr '[:lower:]' '[:upper:]' <<<"$SQL" | awk '{print $1; exit}')"
+case "$FIRST_WORD" in
+  SELECT | SHOW | EXPLAIN | DESCRIBE | DESC | WITH) ;;
+  *) fail "only SELECT, SHOW, EXPLAIN, DESCRIBE and WITH are allowed (got: $FIRST_WORD)" ;;
+esac
+FORBIDDEN='INSERT|UPDATE|DELETE|REPLACE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE|RENAME|LOAD|CALL|SET|LOCK|UNLOCK|HANDLER|OUTFILE|DUMPFILE|KILL|SHUTDOWN|FLUSH|RESET|PURGE|INSTALL|UNINSTALL|SLEEP|BENCHMARK'
+if grep -Eiwq -- "$FORBIDDEN" <<<"$SQL"; then
+  fail "the SQL contains a forbidden word: $(grep -Eiwo -- "$FORBIDDEN" <<<"$SQL" | head -n 1)"
+fi
+
+# 2. The target has to be really local.
+case "$HOST" in 127.0.0.1 | localhost | ::1) ;; *) fail "host '$HOST' is not local" ;; esac
+export PATH="$PATH:/Applications/Docker.app/Contents/Resources/bin"
+COMPOSE_PROJECT="$(cfg composeProject)"
+if [[ -n "$COMPOSE_PROJECT" ]]; then
+  # The port must be the one the local compose container publishes, on loopback.
+  command -v docker >/dev/null || fail "docker not found: can't check that the database is local"
+  SERVICE="$(cfg service)"; SERVICE="${SERVICE:-db}"
+  CONTAINER_PORT="$(cfg containerPort)"; CONTAINER_PORT="${CONTAINER_PORT:-3306}"
+  PUBLISHED="$(docker compose -p "$COMPOSE_PROJECT" port "$SERVICE" "$CONTAINER_PORT" 2>/dev/null || true)"
+  [[ "$PUBLISHED" == "127.0.0.1:$PORT" || "$PUBLISHED" == "0.0.0.0:$PORT" ]] \
+    || fail "compose project '$COMPOSE_PROJECT' doesn't publish $SERVICE on port $PORT (publishes: '${PUBLISHED:-nothing}')"
+else
+  # No compose: whatever listens on the port can't be a tunnel to another machine.
+  LISTENER="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR == 2 {print $1}')"
+  [[ -n "$LISTENER" ]] || fail "nothing listens on port $PORT"
+  case "$LISTENER" in
+    ssh | autossh | sshpass | kubectl | gcloud | cloud_sql* | cloud-sql* | socat | aws | session-m*)
+      fail "port $PORT is served by '$LISTENER', which looks like a tunnel to another machine" ;;
+  esac
+fi
+
+command -v mysql >/dev/null || fail "mysql client not found"
+export MYSQL_PWD="$RO_PASSWORD"
+MYSQL=(mysql --protocol=TCP -h "$HOST" -P "$PORT" -u "$RO_USER" --database "$DB_NAME"
+  --init-command="SET SESSION transaction_read_only = ON, max_execution_time = 15000")
+
+# 3. The user: if it had any write privilege, it isn't used.
+GRANTS="$("${MYSQL[@]}" --batch --skip-column-names -e "SHOW GRANTS FOR CURRENT_USER()")" || fail "can't connect with the read-only user"
+if grep -Eiwq 'ALL|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|INDEX|EXECUTE|FILE|SUPER|GRANT OPTION' <<<"$GRANTS"; then
+  fail "user $RO_USER has write privileges; use one with SELECT only"
+fi
+
+OUT="$(mktemp)"
+trap 'rm -f "$OUT"' EXIT
+"${MYSQL[@]}" --table -e "$SQL" >"$OUT"
+head -n 200 "$OUT"
+if (( $(wc -l <"$OUT") > 200 )); then
+  echo "db-query: output trimmed to 200 lines; use aggregates or LIMIT." >&2
+fi

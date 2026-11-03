@@ -1,0 +1,4 @@
+node_modules/
+dist/
+# Generated per project by scripts/build-office.mjs
+public/worlds/cozy-startup/world.json

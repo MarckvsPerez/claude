@@ -1,0 +1,58 @@
+{
+  "project": "my-project",
+  "roles": {
+    "front": {
+      "agent": "team:front",
+      "owns": ["src/ui/*", "src/styles/*"],
+      "context": "docs/agents/front.md"
+    },
+    "back": {
+      "agent": "team:back",
+      "owns": ["src/api/*", "migrations/*"]
+    },
+    "database": {
+      "agent": "team:database",
+      "owns": []
+    },
+    "designer": {
+      "agent": "team:designer",
+      "owns": ["docs/design/*", "src/styles/tokens.css"]
+    },
+    "ai": {
+      "agent": "team:ai",
+      "owns": ["src/ai/*"]
+    },
+    "reviewer": {
+      "agent": "team:reviewer",
+      "owns": []
+    },
+    "legal": {
+      "agent": "legal",
+      "owns": [],
+      "description": "Repo-specific specialist, defined in .claude/agents/legal.md"
+    }
+  },
+  "gate": {
+    "ignore": ["*.md", "docs/*", "openspec/*", ".claude/*", ".gitignore"],
+    "checks": [
+      { "name": "web", "when": ["src/*", "package.json", "*.ts"], "run": "npm run typecheck && npm run lint && npm test" },
+      { "name": "api", "when": ["api/*"], "run": "npm --prefix api test" }
+    ],
+    "review": true
+  },
+  "database": {
+    "engine": "mysql",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "composeProject": "my-project-local",
+    "service": "db",
+    "containerPort": 3306,
+    "envFile": "env/.env.local",
+    "nameVar": "DB_NAME",
+    "userVar": "DB_READONLY_USER",
+    "passwordVar": "DB_READONLY_PASSWORD"
+  },
+  "miniverse": {
+    "url": "http://127.0.0.1:4321"
+  }
+}
