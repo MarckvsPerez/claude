@@ -18,8 +18,8 @@
 //   Whiteboard:   the lead, working standing.
 //   Top row:      designer, front | ai (centre desk) | back, test-runner, database (back
 //                 office, on concrete).
-//   Bottom row:   coffee bar, reviewer at the desk by the recovery capsule, explorer, chat corner and
-//                 docs-researcher.
+//   Bottom row:   coffee bar with the chat table, reviewer, explorer, recovery capsule and
+//                 docs-researcher (the last three in the lower back office, on concrete).
 //   Rest strip:   5 rugs of 2 beanbags, one beanbag per character (REST_PAIRS).
 //   Annex (rows 16-23, own floor): 4 desks for repo agents and, below, their own sofas.
 // A desk is 3x2 cells with the chair below. The "work" anchor sits one cell below the chair:
@@ -66,8 +66,8 @@ const FALLBACK_AGENTS = ['ai', 'back', 'database', 'designer', 'docs-researcher'
 const pluginAgents = agentNames(pluginAgentsDir);
 const mainAgents = pluginAgents.length > 0 ? pluginAgents : FALLBACK_AGENTS;
 // Fixed desk per agent. Top row, left to right: designer and front by the windows, ai at the
-// centre desk, then back, test-runner and database in the back office. Bottom row: reviewer
-// at the desk by the recovery capsule, explorer and docs-researcher in the lower back office. The lead
+// centre desk, then back, test-runner and database in the back office. Bottom row: reviewer,
+// then explorer and docs-researcher in the lower back office. The lead
 // works standing at the whiteboard. A desk whose agent the plugin doesn't have stays free.
 const DESKS = {
   designer: { x: 1, y: 3 },
@@ -119,7 +119,7 @@ const floor = Array.from({ length: ROWS }, (_, r) =>
   Array.from({ length: COLS }, (_, c) => {
     if (r < 2) return 'exposed_brick_wall';
     if (r >= ANNEX_TOP) return 'annex_floor';
-    const backOffice = (c >= 12 && r <= 7) || (((c >= 12 && c <= 14) || c >= 19) && r >= 8 && r <= 11);
+    const backOffice = c >= 12 && r <= 11;
     return backOffice ? 'concrete_accent' : 'main_floor';
   }),
 );
@@ -165,18 +165,15 @@ for (const [name, { x, y, w }] of Object.entries(DESKS)) {
 }
 add('tall_potted_plant', 15, 2.75, 1, 2);
 
-// --- Coffee bar (bottom left) ---
+// --- Coffee bar (bottom left), with the chat table just above it ---
 add('coffee_bar_counter', 1, 8, 2.5, 2.3, { anchors: [{ name: 'coffee_bar', ox: 1, oy: 2.5, type: 'social' }] });
 add('espresso_machine', 1.4, 8.2, 1.1, 0.8);
 add('mini_fridge', 3.75, 8.5, 0.8, 1.1);
+add('low_coffee_table', 3.25, 6.75, 1.5, 1.5, { anchors: [{ name: 'chat_table', ox: 0.75, oy: 1.9, type: 'social' }] });
+add('tall_potted_plant', 7.25, 8, 1, 2);
 
-// --- Recovery capsule, beside the reviewer's desk (keeps the image's 678x596 proportions,
-// resting on the same line the bookshelf did) ---
-add('recovery_capsule', 5.5, 8.38, 2.7, 2.37);
-
-// --- Chat corner (bottom right) ---
-add('low_coffee_table', 15.8, 8.6, 1.5, 1.5, { anchors: [{ name: 'chat_table', ox: 0.75, oy: 1.9, type: 'social' }] });
-add('tall_potted_plant', 18, 8, 1, 2);
+// --- Recovery capsule, in the lower back office between explorer and docs-researcher ---
+add('recovery_capsule', 15, 7.25, 4, 3.67);
 
 // --- Rest area: bottom strip with 5 rugs of 2 beanbags, one beanbag per character ---
 // Beanbags sit on rows 12-13 and their "rest_<name>" anchor on row 14, which stays free as a
