@@ -1,0 +1,724 @@
+{
+  "assets": [
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        3,
+        2,
+        90,
+        92
+      ],
+      "file": "props/wall_panel.png",
+      "height": 96,
+      "id": "wall_panel",
+      "width": 96,
+      "bytes": 10513,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        12,
+        2,
+        103,
+        92
+      ],
+      "file": "props/window_capsule_city.png",
+      "height": 96,
+      "id": "window_capsule_city",
+      "width": 128,
+      "bytes": 19356,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        12,
+        2,
+        103,
+        92
+      ],
+      "file": "props/sign_capsule_corp.png",
+      "height": 96,
+      "id": "sign_capsule_corp",
+      "width": 128,
+      "bytes": 18248,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        3,
+        2,
+        121,
+        92
+      ],
+      "file": "props/screen_blueprint.png",
+      "height": 96,
+      "id": "screen_blueprint",
+      "width": 128,
+      "bytes": 20759,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        13,
+        28,
+        81
+      ],
+      "file": "props/column_capsule.png",
+      "height": 96,
+      "id": "column_capsule",
+      "width": 32,
+      "bytes": 4684,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        9,
+        92,
+        21
+      ],
+      "file": "props/wall_light.png",
+      "height": 32,
+      "id": "wall_light",
+      "width": 96,
+      "bytes": 3765,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        7,
+        124,
+        71
+      ],
+      "file": "props/desk_empty.png",
+      "height": 80,
+      "id": "desk_empty",
+      "width": 128,
+      "bytes": 12257,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        2,
+        44,
+        44
+      ],
+      "file": "props/monitor_chart.png",
+      "height": 48,
+      "id": "monitor_chart",
+      "width": 48,
+      "bytes": 4170,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        5,
+        44,
+        17
+      ],
+      "file": "props/keyboard.png",
+      "height": 24,
+      "id": "keyboard",
+      "width": 48,
+      "bytes": 2164,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        3,
+        2,
+        41,
+        60
+      ],
+      "file": "props/chair_orange.png",
+      "height": 64,
+      "id": "chair_orange",
+      "width": 48,
+      "bytes": 4746,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        3,
+        2,
+        41,
+        60
+      ],
+      "file": "props/chair_blue.png",
+      "height": 64,
+      "id": "chair_blue",
+      "width": 48,
+      "bytes": 4827,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        9,
+        28,
+        21
+      ],
+      "file": "props/stationery.png",
+      "height": 32,
+      "id": "stationery",
+      "width": 32,
+      "bytes": 1631,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        4,
+        2,
+        119,
+        92
+      ],
+      "file": "props/sofa_orange.png",
+      "height": 96,
+      "id": "sofa_orange",
+      "width": 128,
+      "bytes": 20650,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        4,
+        2,
+        119,
+        92
+      ],
+      "file": "props/sofa_blue.png",
+      "height": 96,
+      "id": "sofa_blue",
+      "width": 128,
+      "bytes": 20933,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        3,
+        124,
+        59
+      ],
+      "file": "props/coffee_table.png",
+      "height": 64,
+      "id": "coffee_table",
+      "width": 128,
+      "bytes": 9918,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        8,
+        2,
+        80,
+        76
+      ],
+      "file": "props/meeting_table.png",
+      "height": 80,
+      "id": "meeting_table",
+      "width": 96,
+      "bytes": 9256,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        10,
+        2,
+        107,
+        60
+      ],
+      "file": "props/rug_four_stars.png",
+      "height": 64,
+      "id": "rug_four_stars",
+      "width": 128,
+      "bytes": 10196,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        4,
+        2,
+        120,
+        92
+      ],
+      "file": "props/display_seven_dragon_balls.png",
+      "height": 96,
+      "id": "display_seven_dragon_balls",
+      "width": 128,
+      "bytes": 21500,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        10,
+        2,
+        76,
+        76
+      ],
+      "file": "props/kitchen_counter.png",
+      "height": 80,
+      "id": "kitchen_counter",
+      "width": 96,
+      "bytes": 9440,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        4,
+        2,
+        56,
+        76
+      ],
+      "file": "props/coffee_machine.png",
+      "height": 80,
+      "id": "coffee_machine",
+      "width": 64,
+      "bytes": 8874,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        6,
+        2,
+        52,
+        92
+      ],
+      "file": "props/capsule_vending.png",
+      "height": 96,
+      "id": "capsule_vending",
+      "width": 64,
+      "bytes": 11294,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        16,
+        44,
+        78
+      ],
+      "file": "props/fridge.png",
+      "height": 96,
+      "id": "fridge",
+      "width": 48,
+      "bytes": 5683,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        6,
+        2,
+        35,
+        92
+      ],
+      "file": "props/water_cooler.png",
+      "height": 96,
+      "id": "water_cooler",
+      "width": 48,
+      "bytes": 7766,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        4,
+        28,
+        42
+      ],
+      "file": "props/waste_bin.png",
+      "height": 48,
+      "id": "waste_bin",
+      "width": 32,
+      "bytes": 2698,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        10,
+        60,
+        116
+      ],
+      "file": "props/namek_tree.png",
+      "height": 128,
+      "id": "namek_tree",
+      "width": 64,
+      "bytes": 10462,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        12,
+        28,
+        34
+      ],
+      "file": "props/desk_plant.png",
+      "height": 48,
+      "id": "desk_plant",
+      "width": 32,
+      "bytes": 2350,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        3,
+        2,
+        41,
+        60
+      ],
+      "file": "props/namek_bonsai.png",
+      "height": 64,
+      "id": "namek_bonsai",
+      "width": 48,
+      "bytes": 3942,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        2,
+        2,
+        43,
+        44
+      ],
+      "file": "props/wall_clock.png",
+      "height": 48,
+      "id": "wall_clock",
+      "width": 48,
+      "bytes": 4220,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        4,
+        2,
+        56,
+        76
+      ],
+      "file": "props/server_cabinet.png",
+      "height": 80,
+      "id": "server_cabinet",
+      "width": 64,
+      "bytes": 9173,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "anchor": [
+        0.5,
+        1
+      ],
+      "contentBounds": [
+        6,
+        2,
+        148,
+        60
+      ],
+      "file": "props/medical_platform.png",
+      "height": 64,
+      "id": "medical_platform",
+      "width": 160,
+      "bytes": 16207,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "file": "tiles/floor_blue.png",
+      "height": 32,
+      "id": "floor_blue",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2080,
+      "transparent": false
+    },
+    {
+      "file": "tiles/floor_medical.png",
+      "height": 32,
+      "id": "floor_medical",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2039,
+      "transparent": false
+    },
+    {
+      "file": "tiles/floor_ivory.png",
+      "height": 32,
+      "id": "floor_ivory",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2017,
+      "transparent": false
+    },
+    {
+      "file": "tiles/circuit_horizontal.png",
+      "height": 32,
+      "id": "circuit_horizontal",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2134,
+      "transparent": false
+    },
+    {
+      "file": "tiles/circuit_vertical.png",
+      "height": 32,
+      "id": "circuit_vertical",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2103,
+      "transparent": false
+    },
+    {
+      "file": "tiles/circuit_corner_nw.png",
+      "height": 32,
+      "id": "circuit_corner_nw",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2166,
+      "transparent": false
+    },
+    {
+      "file": "tiles/circuit_corner_ne.png",
+      "height": 32,
+      "id": "circuit_corner_ne",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2165,
+      "transparent": false
+    },
+    {
+      "file": "tiles/circuit_corner_se.png",
+      "height": 32,
+      "id": "circuit_corner_se",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2142,
+      "transparent": false
+    },
+    {
+      "file": "tiles/circuit_corner_sw.png",
+      "height": 32,
+      "id": "circuit_corner_sw",
+      "type": "tile",
+      "width": 32,
+      "bytes": 2164,
+      "transparent": false
+    },
+    {
+      "id": "coffee_counter_complete",
+      "file": "props/coffee_counter_complete.png",
+      "width": 96,
+      "height": 128,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "bytes": 16518,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "id": "wall_left",
+      "file": "props/wall_left.png",
+      "width": 32,
+      "height": 96,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "bytes": 3707,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "id": "wall_middle",
+      "file": "props/wall_middle.png",
+      "width": 32,
+      "height": 96,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "bytes": 3805,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "id": "wall_right",
+      "file": "props/wall_right.png",
+      "width": 32,
+      "height": 96,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "bytes": 3895,
+      "type": "prop",
+      "transparent": true
+    },
+    {
+      "id": "workstation_complete",
+      "file": "props/workstation_complete.png",
+      "width": 128,
+      "height": 112,
+      "anchor": [
+        0.5,
+        1.0
+      ],
+      "bytes": 18143,
+      "type": "prop",
+      "transparent": true
+    }
+  ],
+  "tileSize": 32,
+  "assetCount": 44,
+  "palette": "ivory / cobalt / orange / teal",
+  "perspective": "orthographic RPG, front with visible top surfaces"
+}

@@ -1,8 +1,19 @@
 import { Miniverse, PropSystem, Editor, createStandardSpriteConfig } from '@miniverse/core';
 import type { SceneConfig, SpriteSheetConfig, CitizenDef } from '@miniverse/core';
 
-const WORLD_ID = 'cozy-startup';
-const basePath = `/worlds/${WORLD_ID}`;
+// Team: the world is ?world=<id>, else the one scripts/build-office.mjs last built
+// (public/worlds/current.json), else cozy-startup. Set by resolveWorld() before anything loads.
+let WORLD_ID = 'cozy-startup';
+let basePath = `/worlds/${WORLD_ID}`;
+
+async function resolveWorld() {
+  const built: string | undefined = await fetch('/worlds/current.json')
+    .then(r => r.json())
+    .then((d: { world?: string }) => d.world)
+    .catch(() => undefined);
+  WORLD_ID = (new URLSearchParams(location.search).get('world') ?? built ?? WORLD_ID).replace(/[^a-zA-Z0-9_-]/g, '');
+  basePath = `/worlds/${WORLD_ID}`;
+}
 
 function charSprites(name: string): SpriteSheetConfig {
   return {
@@ -23,6 +34,49 @@ function charSprites(name: string): SpriteSheetConfig {
     },
     frameWidth: 64,
     frameHeight: 64,
+  };
+}
+
+// Team: the engine's canvas holds one pixel per world pixel and CSS stretches it to `scale`,
+// so images drawn smaller than their file (Capsule Corp's props) lose pixels and the
+// enlargement blurs nothing but repeats them. This gives the canvas one pixel per screen
+// pixel (world x scale x devicePixelRatio) at the same CSS size, so every image is drawn with
+// all its detail. render() and resize() are the Renderer's own, plus that factor; the mouse
+// is unaffected because it maps from the CSS size.
+function renderAtScreenResolution(mv: Miniverse, scale: number) {
+  type Layer = { render(ctx: CanvasRenderingContext2D, dt: number): void };
+  type Renderer = {
+    canvas: HTMLCanvasElement;
+    ctx: CanvasRenderingContext2D;
+    layers: Layer[];
+    camera: { x: number; y: number; zoom: number; update(): void };
+    render(dt: number): void;
+    resize(width: number, height: number): void;
+  };
+  const renderer = (mv as unknown as { renderer: Renderer }).renderer;
+  const density = scale * (window.devicePixelRatio || 1);
+  const resize = (width: number, height: number) => {
+    const { canvas, ctx } = renderer;
+    canvas.width = Math.round(width * density);
+    canvas.height = Math.round(height * density);
+    canvas.style.width = `${width * scale}px`;
+    canvas.style.height = `${height * scale}px`;
+    ctx.imageSmoothingEnabled = false;
+  };
+  resize(renderer.canvas.width, renderer.canvas.height);
+  renderer.resize = resize;
+  renderer.render = (dt) => {
+    const { ctx, canvas, camera } = renderer;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    camera.update();
+    const z = camera.zoom * density;
+    for (const layer of renderer.layers) {
+      ctx.save();
+      ctx.setTransform(z, 0, 0, z, -camera.x * z, -camera.y * z);
+      layer.render(ctx, dt);
+      ctx.restore();
+    }
   };
 }
 
@@ -57,6 +111,7 @@ async function main() {
   const tooltip = document.getElementById('tooltip')!;
   const statusBar = document.getElementById('status-bar')!;
 
+  await resolveWorld();
   const sceneData = await fetch(`${basePath}/world.json`).then(r => r.json()).catch(() => null);
 
   // Collect work anchor names from props for citizen placement
@@ -67,6 +122,15 @@ async function main() {
   const gridRows = sceneData?.gridRows ?? 12;
   const sceneConfig = buildSceneConfig(gridCols, gridRows, sceneData?.floor, sceneData?.tiles);
   const tileSize = 32;
+  // Team: the largest scale (up to x2) at which the whole world fits in the window, below the
+  // title and above the status bar, so a big world still fits on a laptop screen. Measured
+  // once at load: the editor and the props map the mouse with this same scale.
+  const RESERVED_HEIGHT = 120;
+  const fitScale = Math.min(
+    2,
+    (window.innerWidth - 24) / (gridCols * tileSize),
+    (window.innerHeight - RESERVED_HEIGHT) / (gridRows * tileSize),
+  );
 
   // Auto-discover agents from server and available sprites
   const availableSprites: string[] = await fetch('/api/citizens').then(r => r.json()).catch(() => ['lead']);
@@ -124,13 +188,14 @@ async function main() {
         position: extraAnchors[i] ?? sceneData?.wanderPoints?.[i]?.name ?? 'wander_' + i,
       }))
     ],
-    scale: 2,
+    scale: fitScale,
     width: gridCols * tileSize,
     height: gridRows * tileSize,
     sceneConfig,
     spriteSheets,
     objects: [],
   });
+  renderAtScreenResolution(mv, fitScale);
 
   // Team: the server marks an agent "offline" after a minute without heartbeats and the
   // engine then hides it. Team roles stay in the office asleep instead.
@@ -143,7 +208,7 @@ async function main() {
   );
 
   // --- Props system ---
-  const props = new PropSystem(tileSize, 2);
+  const props = new PropSystem(tileSize, fitScale);
 
   const rawSpriteMap: Record<string, string> = sceneData?.propImages ?? {};
   await Promise.all(
