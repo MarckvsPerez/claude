@@ -26,6 +26,7 @@ LEAD
 ```
 
 - A **specialist** is created when the repo needs judgement no base profile has: a regulation, a provider, a very specific technology. Template: `templates/specialist.md`.
+- Miniverse shows **who works**, not team.json's role names. The main office is this plugin's agents (`agents/*.md`) by their own names, with the same desks and looks in every repo: two roles run by the same profile (`front-cliente` and `front-admin`, both `team:front`) are one character, "Front", whose tasks carry the role (`front-admin · Edit · Admin.tsx`). The repo's own agents (`.claude/agents/*.md`) work in the **annex**: its own floor, 4 desks and a row of sofas, all with the same `repo-agent` look. Repo agents past the fourth, alphabetically, get no character: their work shows up as the lead's, labelled with their name (`pagos · Edit · checkout.ts`).
 - A base profile is **adapted to the repo with an addendum** (`context` in team.json) instead of being copied: the agent reads it at start and its rules override the generic ones.
 
 ## What's included

@@ -69,7 +69,7 @@ async function main() {
   const tileSize = 32;
 
   // Auto-discover agents from server and available sprites
-  const availableSprites: string[] = await fetch('/api/citizens').then(r => r.json()).catch(() => ['morty', 'dexter', 'nova', 'rio']);
+  const availableSprites: string[] = await fetch('/api/citizens').then(r => r.json()).catch(() => ['lead']);
   const serverAgents: { agent: string; name: string }[] = await fetch('http://localhost:4321/api/agents')
     .then(r => r.json())
     .then((d: any) => d.agents ?? [])
@@ -176,6 +176,23 @@ async function main() {
     // Standing only while working: asleep on a beanbag it still needs the seated offset.
     const seatedOffset = citizen.getSittingOffset.bind(citizen);
     citizen.getSittingOffset = () => (citizen.state === 'working' ? 0 : seatedOffset());
+  }
+
+  // Team: every character has its own sofa ("rest" in world.json). The engine sends a
+  // sleeping character to any free "rest" anchor, so each one only gets to see its own;
+  // characters without one see the sofas nobody owns.
+  type Anchor = { name: string; type: string };
+  type Citizen = { goToAnchorType(type: string, anchors: Anchor[], ...rest: unknown[]): boolean };
+  const restOf = new Map(roleDefs.map(d => [d.agentId, (d as { rest?: string }).rest]));
+  const ownedRests = new Set([...restOf.values()].filter(Boolean));
+  for (const id of [...roleDefs.map(d => d.agentId), ...extraAgents.map(a => a.agent)]) {
+    const citizen = mv.getCitizen(id) as unknown as Citizen | undefined;
+    if (!citizen) continue;
+    const own = restOf.get(id);
+    const allowed = (a: Anchor) => a.type !== 'rest' || (own ? a.name === own : !ownedRests.has(a.name));
+    const goToAnchorType = citizen.goToAnchorType.bind(citizen);
+    citizen.goToAnchorType = (type, anchors, ...rest) =>
+      goToAnchorType(type, type === 'rest' ? anchors.filter(allowed) : anchors, ...rest);
   }
 
   mv.addLayer({ order: 5, render: (ctx) => props.renderBelow(ctx) });

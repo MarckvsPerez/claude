@@ -62,8 +62,10 @@ open_window() {
   fi
 }
 
+# The main office shows this plugin's agents, read from its agents/ folder.
+PLUGIN_AGENTS="$(cd "$(dirname "$0")/../agents" 2>/dev/null && pwd)"
 build_office() {
-  (cd "$APP_DIR" && node scripts/build-office.mjs --team "$CONFIG") >>"$LOG" 2>&1
+  (cd "$APP_DIR" && node scripts/build-office.mjs --team "$CONFIG" ${PLUGIN_AGENTS:+--plugin-agents "$PLUGIN_AGENTS"}) >>"$LOG" 2>&1
 }
 
 OPEN=false

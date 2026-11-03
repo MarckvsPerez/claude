@@ -91,21 +91,31 @@ check "gate: releases the lock" 0 "$(ls "${TMPDIR:-/tmp}"/team-gate-*.lock 2>/de
 # --- Miniverse bridge (only if the server is running) ---
 if curl -s -m 1 -o /dev/null http://127.0.0.1:4321/api/agents; then
   mkdir -p "$TMP/mv/.claude"
-  jq -n '{project: "team-test", roles: {front: {agent: "team:front"}, motion: {agent: "three"}}, miniverse: {url: "http://127.0.0.1:4321"}}' >"$TMP/mv/.claude/team.json"
+  # Repo agents: motion, r2, r3 and r4 take the annex's 4 desks (alphabetical); r5 is left over.
+  mkdir -p "$TMP/mv/.claude/agents"
+  for n in motion r2 r3 r4 r5; do printf -- '---\nname: %s\n---\n' "$n" >"$TMP/mv/.claude/agents/$n.md"; done
+  jq -n '{project: "team-test", roles: {"front-admin": {agent: "team:front"}, motion: {agent: "motion"}}, miniverse: {url: "http://127.0.0.1:4321"}}' >"$TMP/mv/.claude/team.json"
   bridge() { echo "$1" | CLAUDE_PROJECT_DIR="$TMP/mv" "$PLUGIN/scripts/miniverse-bridge.sh"; }
+  state_of() { jq -r --arg a "$1" '.agents[] | select(.agent == $a) | "\(.state)|\(.task)"' <<<"$AGENTS"; }
   bridge '{"hook_event_name":"PreToolUse","tool_name":"Read","agent_type":"team:front","tool_input":{"file_path":"/a/b/App.tsx"}}'
-  bridge '{"hook_event_name":"PreToolUse","tool_name":"Edit","agent_type":"three","tool_input":{"file_path":"/a/Scene.tsx"}}'
   bridge '{"hook_event_name":"PreToolUse","tool_name":"Grep","agent_type":"team:explorer"}'
+  bridge '{"hook_event_name":"PreToolUse","tool_name":"Edit","agent_type":"motion","tool_input":{"file_path":"/a/Scene.tsx"}}'
   bridge '{"hook_event_name":"UserPromptSubmit","prompt":"secret-text"}'
   bridge '{"hook_event_name":"PreToolUse","tool_name":"Glob","agent_type":"general-purpose"}'
   AGENTS="$(curl -s http://127.0.0.1:4321/api/agents)"
-  state_of() { jq -r --arg a "$1" '.agents[] | select(.agent == $a) | "\(.state)|\(.task)"' <<<"$AGENTS"; }
-  check "bridge: base profile under its role" "working|Read · App.tsx" "$(state_of team-test-front)"
-  check "bridge: repo specialist under its team.json role" "working|Edit · Scene.tsx" "$(state_of team-test-motion)"
-  check "bridge: worker outside team.json without prefix" "working|Grep" "$(state_of team-test-explorer)"
+  check "bridge: plugin agent under its own name" "working|Read · App.tsx" "$(state_of team-test-front)"
+  check "bridge: role name gets no character of its own" "" "$(state_of team-test-front-admin)"
+  check "bridge: plugin worker under its own name" "working|Grep" "$(state_of team-test-explorer)"
+  check "bridge: repo agent with an annex desk" "working|Edit · Scene.tsx" "$(state_of team-test-motion)"
   check "bridge: built-in agent shows as the lead's work" "working|general-purpose · Glob" "$(state_of team-test-lead)"
   check "bridge: built-in agent gets no character" "" "$(state_of team-test-general-purpose)"
   check "bridge: doesn't send the prompt" 0 "$(grep -c secret-text <<<"$AGENTS")"
+  bridge '{"hook_event_name":"PreToolUse","tool_name":"Read","agent_type":"r5","tool_input":{"file_path":"/a/terms.md"}}'
+  bridge '{"hook_event_name":"PreToolUse","tool_name":"Edit","teammate_name":"front-admin","tool_input":{"file_path":"/a/Admin.tsx"}}'
+  AGENTS="$(curl -s http://127.0.0.1:4321/api/agents)"
+  check "bridge: repo agent past the annex desks shows as the lead's work" "working|r5 · Read · terms.md" "$(state_of team-test-lead)"
+  check "bridge: repo agent past the annex desks gets no character" "" "$(state_of team-test-r5)"
+  check "bridge: teammate works as its profile, labelled with its role" "working|front-admin · Edit · Admin.tsx" "$(state_of team-test-front)"
   for a in team-test-front team-test-motion team-test-explorer team-test-lead; do
     curl -s -o /dev/null -X POST http://127.0.0.1:4321/api/agents/remove -H 'Content-Type: application/json' -d "{\"agent\":\"$a\"}"
   done

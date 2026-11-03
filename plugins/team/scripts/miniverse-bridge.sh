@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
-# Bridge between Claude Code hooks and Miniverse: one character per team ROLE, with id
-# "<project>-<role>". Only active if .claude/team.json has "miniverse".
+# Bridge between Claude Code hooks and Miniverse: one character per AGENT that works, with id
+# "<project>-<agent name>", the same office in every repo (miniverse/scripts/build-office.mjs):
+#   - Main office: this plugin's agents (agents/*.md: front, back, database…), by their own
+#     names. Two team.json roles run by the same profile (front-cliente and front-admin, both
+#     team:front) are the same character, "Front".
+#   - Annex: the repo's own agents (.claude/agents/*.md), the first REPO_DESKS alphabetically.
+#   - Anything else (agents past the annex desks, Claude Code built-ins such as
+#     general-purpose, Explore or Plan, other plugins' agents) shows up as the lead's work,
+#     labelled with its name. Otherwise every ad-hoc type would add a character that
+#     SessionEnd never puts offline.
+# Only active if .claude/team.json has "miniverse".
 #
 # Runs as an async hook: it never blocks, prints nothing and always exits 0.
-# It only sends role, state, tool and file name: never prompts, commands or content.
+# It only sends agent, state, tool and file name: never prompts, commands or content.
 # The Miniverse server listens on every network interface.
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
@@ -15,14 +24,31 @@ URL="$(jq -r '.miniverse.url // empty' "$CONFIG" 2>/dev/null)"
 PROJECT="$(jq -r '.project // empty' "$CONFIG" 2>/dev/null)"
 [[ -n "$PROJECT" ]] || PROJECT="$(basename "$ROOT")"
 PROJECT="$(tr '[:upper:]' '[:lower:]' <<<"$PROJECT" | tr -c 'a-z0-9-\n' '-')"
-# Characters registered at session start: the lead, the team.json roles and the plugin's
-# shared workers, so they are on screen (asleep) before they ever work.
-ROLES="lead $(jq -r '.roles // {} | keys | join(" ")' "$CONFIG" 2>/dev/null) explorer test-runner docs-researcher"
+slug() { tr '[:upper:]' '[:lower:]' <<<"$1" | tr -c 'a-z0-9-\n' '-'; }
+# Agent names in a folder of agent files, alphabetically: the "name:" of each frontmatter, or
+# the file name without ".md".
+agent_names() {
+  local f name
+  for f in "$1"/*.md; do
+    [[ -f "$f" ]] || continue
+    name="$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit } /^name:/ { sub(/^name:[ \t]*/, ""); gsub(/["\047]/, ""); print; exit }' "$f")"
+    [[ -n "$name" ]] || name="$(basename "$f" .md)"
+    slug "$name"
+  done
+}
+REPO_DESKS=4
+MAIN_AGENTS=" $(agent_names "$(dirname "$0")/../agents" | tr '\n' ' ')"
+REPO_LIST=()
+while read -r name; do
+  [[ -n "$name" && "$name" != "lead" && "$MAIN_AGENTS" != *" $name "* ]] && REPO_LIST+=("$name")
+done < <(agent_names "$ROOT/.claude/agents")
+REPO_SEATED=" ${REPO_LIST[*]:0:$REPO_DESKS} "
+# Characters registered at session start, so they are on screen (asleep) before they work.
+ROLES="lead$MAIN_AGENTS$REPO_SEATED"
 
 INPUT="$(cat)"
 field() { jq -r "$1 // empty" <<<"$INPUT" 2>/dev/null; }
 
-slug() { tr '[:upper:]' '[:lower:]' <<<"$1" | tr -c 'a-z0-9-\n' '-'; }
 role_name() {
   local first rest
   first="$(cut -c1 <<<"$1" | tr '[:lower:]' '[:upper:]')"
@@ -42,27 +68,32 @@ beat() {
 EVENT="$(field .hook_event_name)"
 TOOL="$(field .tool_name)"
 
-# Role: the team.json role whose "agent" is the event's agent type (so a repo specialist
-# and a plugin profile both show up under their role name); otherwise the teammate name
-# in team events; otherwise a plugin profile without its prefix ("team:front" → "front");
-# and "lead" for the main session.
-# Any other agent type (Claude Code built-ins such as general-purpose, Explore or Plan, or
-# another plugin's agents) is not a team role: it gets no character of its own and shows
-# up as the lead's work, labelled with its type. Otherwise every ad-hoc type would add a
-# character that SessionEnd never puts offline.
+# Who works: the event's agent type ("team:front" → "front", "pagos" → "pagos"); in agent-team
+# events without one, the teammate's team.json role, through its "agent"; nothing for the
+# main session, which is the lead. A teammate whose role name differs from its agent
+# ("front-admin" running team:front) labels its tasks with the role.
 AGENT_TYPE="$(field .agent_type)"
-ROLE=""
-FOREIGN=""
+WHO=""
+ROLE_LABEL=""
 if [[ -n "$AGENT_TYPE" ]]; then
-  ROLE="$(jq -r --arg t "$AGENT_TYPE" '[.roles // {} | to_entries[] | select(.value.agent == $t) | .key][0] // empty' "$CONFIG" 2>/dev/null)"
+  WHO="${AGENT_TYPE#team:}"
+else
+  TEAMMATE="$(field .teammate_name)"
+  if [[ -n "$TEAMMATE" ]]; then
+    WHO="$(jq -r --arg r "$TEAMMATE" '.roles[$r].agent // empty' "$CONFIG" 2>/dev/null)"
+    WHO="${WHO#team:}"
+    [[ -n "$WHO" ]] || WHO="$TEAMMATE"
+    [[ "$(slug "$WHO")" == "$(slug "$TEAMMATE")" ]] || ROLE_LABEL="$TEAMMATE"
+  fi
 fi
-[[ -n "$ROLE" ]] || ROLE="$(field .teammate_name)"
-if [[ -z "$ROLE" && -n "$AGENT_TYPE" ]]; then
-  if [[ "$AGENT_TYPE" == team:* ]]; then ROLE="${AGENT_TYPE#team:}"; else FOREIGN="$AGENT_TYPE"; fi
+WHO="$(slug "$WHO")"
+ROLE="lead"
+FOREIGN=""
+if [[ -n "$WHO" ]]; then
+  if [[ "$MAIN_AGENTS$REPO_SEATED" == *" $WHO "* ]]; then ROLE="$WHO"; else FOREIGN="$WHO"; fi
 fi
-[[ -n "$ROLE" ]] || ROLE="lead"
-ROLE="$(slug "$ROLE")"
-PREFIX="${FOREIGN:+$FOREIGN · }"
+LABEL="${FOREIGN:-$ROLE_LABEL}"
+PREFIX="${LABEL:+$LABEL · }"
 
 tool_label() {
   local file

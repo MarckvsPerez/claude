@@ -1,101 +1,136 @@
 // Builds the zoned office from Cozy Startup's original world.json for one project's team.
 // Usage:
-//   node scripts/build-office.mjs --team path/to/.claude/team.json
+//   node scripts/build-office.mjs --team path/to/.claude/team.json [--plugin-agents dir]
 // (rewrites public/worlds/cozy-startup/world.json)
 //
-// Character ids are "<project>-<role>", the same ones the team plugin's bridge sends. The
-// lead stands at the whiteboard, reviewer takes the centre desk and the other roles take the
-// 6 desks in team.json order. The team plugin's workers (explorer, test-runner,
-// docs-researcher) take the desks left over.
+// The office doesn't follow team.json's role names: it shows WHO works.
+//   Main office: the team plugin's own agents (plugins/team/agents/*.md: front, back,
+//                database…), by their own names and with fixed desks and looks, the same in
+//                every repo. Two repo roles run by the same profile (front-cliente and
+//                front-admin, both team:front) are one character, "Front".
+//   Annex:       the repo's own agents (the .claude/agents/*.md next to team.json, e.g.
+//                pagos and legal), all with the same look (repo-agent). It has 4 desks;
+//                agents past the fourth, alphabetically, get no character and the bridge
+//                shows their work as the lead's.
+// Character ids are "<project>-<agent name>", the same ones the team plugin's bridge sends.
 //
-// 20x16 grid. Rows 0-1: wall, fully covered by props so nobody walks on it.
-//   Top left:     two desks by the windows.
-//   Top centre:   lead standing at the big whiteboard; reviewer at the centre desk.
-//   Right:        back office on a concrete floor (three desks).
-//   Bottom:       coffee bar and chat corner (social), library desk.
-//   Bottom strip: rest area with one beanbag per character. A character going "sleeping"
-//                 walks to a free "rest" anchor; with none left the engine leaves it asleep
-//                 in its chair.
+// 23x24 grid. Rows 0-1: wall, fully covered by props so nobody walks on it.
+//   Whiteboard:   the lead, working standing.
+//   Top row:      designer, front | ai (centre desk) | back, test-runner, database (back
+//                 office, on concrete).
+//   Bottom row:   coffee bar, reviewer at the desk by the recovery capsule, explorer, chat corner and
+//                 docs-researcher.
+//   Rest strip:   5 rugs of 2 beanbags, one beanbag per character (REST_PAIRS).
+//   Annex (rows 16-23, own floor): 4 desks for repo agents and, below, their own sofas.
 // A desk is 3x2 cells with the chair below. The "work" anchor sits one cell below the chair:
 // the engine draws a working character 1.2 cells above its anchor, so it ends up in the chair.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const dir = new URL('../public/worlds/cozy-startup/', import.meta.url);
 const original = JSON.parse(readFileSync(new URL('world.original.json', dir), 'utf8'));
 
-// The 4 bundled characters plus their colour variants (scripts/recolor-citizens.mjs): 8 looks
-// for up to 8 characters (lead, reviewer and 6 desks) without repeats.
-const SPRITES = ['nova', 'dexter', 'rio', 'morty', 'morty-blue', 'dexter-green', 'rio-teal', 'nova-khaki'];
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
-const label = (role) => role.charAt(0).toUpperCase() + role.slice(1).replace(/-/g, ' ');
+const label = (name) => name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, ' ');
+const arg = (flag) => {
+  const i = process.argv.indexOf(flag);
+  return i === -1 ? undefined : process.argv[i + 1];
+};
 
-const teamArg = process.argv.indexOf('--team');
-const teamPath = teamArg === -1 ? undefined : process.argv[teamArg + 1];
+const teamPath = arg('--team');
 if (!teamPath) {
-  console.error('Usage: node scripts/build-office.mjs --team path/to/.claude/team.json');
+  console.error('Usage: node scripts/build-office.mjs --team path/to/.claude/team.json [--plugin-agents dir]');
   process.exit(1);
 }
 const team = JSON.parse(readFileSync(teamPath, 'utf8'));
-const roles = Object.keys(team.roles ?? {}).map(slug);
-const others = roles.filter((r) => r !== 'reviewer' && r !== 'lead');
-if (others.length > 6) {
-  console.error(`The office has 6 desks and team.json has ${others.length} roles besides lead and reviewer.`);
-  process.exit(1);
-}
-// Fixed look per known role, in pairs that work together: each pair shares a character in two
-// outfits. Roles not listed here (a repo specialist such as legal) get the looks nobody else
-// uses, in order, and only repeat past 8 characters.
-const ROLE_SPRITES = {
-  lead: 'dexter',
-  reviewer: 'dexter-green',
-  front: 'morty',
-  back: 'morty-blue',
-  designer: 'nova',
-  'docs-researcher': 'nova-khaki',
-  explorer: 'rio',
-  'test-runner': 'rio-teal',
-};
-const spriteFor = (() => {
-  const taken = new Set();
-  return (role, everyone) => {
-    if (taken.size === 0) everyone.forEach((r) => ROLE_SPRITES[r] && taken.add(ROLE_SPRITES[r]));
-    if (ROLE_SPRITES[role]) return ROLE_SPRITES[role];
-    const free = SPRITES.find((s) => !taken.has(s)) ?? SPRITES[taken.size % SPRITES.length];
-    taken.add(free);
-    return free;
-  };
-})();
-// The team plugin's shared workers are fixed characters too: they take the desks the roles
-// leave free and rest like everyone else. A worker without a free desk is left out and the
-// engine places it on the fly if it ever shows up.
-const WORKERS = ['explorer', 'test-runner', 'docs-researcher'];
-const deskRoles = [...others, ...WORKERS.filter((w) => !others.includes(w))].slice(0, 6);
-const everyone = ['lead', ...(roles.includes('reviewer') ? ['reviewer'] : []), ...deskRoles];
-const roster = {
-  project: slug(team.project ?? teamPath.split('/').at(-3)),
-  lead: 'lead',
-  reviewer: roles.includes('reviewer') ? 'reviewer' : null,
-  desks: deskRoles,
-  sprites: Object.fromEntries(everyone.map((r) => [r, spriteFor(r, everyone)])),
+
+// An agent's name: the "name:" of its frontmatter, or the file name without ".md".
+const agentNames = (agentsDir) => {
+  if (!agentsDir || !existsSync(agentsDir)) return [];
+  return readdirSync(agentsDir)
+    .filter((f) => f.endsWith('.md'))
+    .sort()
+    .map((f) => {
+      const text = readFileSync(join(agentsDir, f), 'utf8');
+      const name = /^---\n[\s\S]*?^name:\s*["']?([^"'\n]+)["']?\s*$/m.exec(text)?.[1];
+      return slug((name ?? f.replace(/\.md$/, '')).trim());
+    });
 };
 
-const COLS = 20;
-const ROWS = 16;
+// --- Main office: the team plugin's agents ---
+const here = dirname(fileURLToPath(import.meta.url));
+const pluginAgentsDir = arg('--plugin-agents') ?? resolve(here, '../../plugins/team/agents');
+const FALLBACK_AGENTS = ['ai', 'back', 'database', 'designer', 'docs-researcher', 'explorer', 'front', 'reviewer', 'test-runner'];
+const pluginAgents = agentNames(pluginAgentsDir);
+const mainAgents = pluginAgents.length > 0 ? pluginAgents : FALLBACK_AGENTS;
+// Fixed desk per agent. Top row, left to right: designer and front by the windows, ai at the
+// centre desk, then back, test-runner and database in the back office. Bottom row: reviewer
+// at the desk by the recovery capsule, explorer and docs-researcher in the lower back office. The lead
+// works standing at the whiteboard. A desk whose agent the plugin doesn't have stays free.
+const DESKS = {
+  designer: { x: 1, y: 3 },
+  front: { x: 4, y: 3 },
+  ai: { x: 8.25, y: 3, w: 2.7 },
+  back: { x: 12, y: 3 },
+  'test-runner': { x: 16, y: 3 },
+  database: { x: 19, y: 3 },
+  reviewer: { x: 8.25, y: 8, w: 2.7 },
+  explorer: { x: 12, y: 8 },
+  'docs-researcher': { x: 19, y: 8 },
+};
+const deskAgents = Object.keys(DESKS).filter((a) => mainAgents.includes(a));
+const deskless = mainAgents.filter((a) => !DESKS[a]);
+if (deskless.length > 0) console.warn(`No desk for ${deskless.join(', ')}: add one to DESKS.`);
+
+// Fixed sofa per character, in pairs sharing a rug, left to right.
+const REST_PAIRS = [
+  ['front', 'designer'],
+  ['back', 'lead'],
+  ['ai', 'database'],
+  ['docs-researcher', 'reviewer'],
+  ['explorer', 'test-runner'],
+];
+
+// Each character's look is <name>_walk.png and <name>_actions.png in universal_assets/citizens,
+// named after its agent (front_walk.png…): replace those files to change a look. A character
+// without its own files borrows the lead's.
+const citizensDir = new URL('../public/universal_assets/citizens/', import.meta.url);
+const spriteFor = (name) => (existsSync(new URL(`${name}_walk.png`, citizensDir)) ? name : 'lead');
+
+// --- Annex: the repo's own agents ---
+const ANNEX_DESKS = 4; // the bridge's REPO_DESKS
+const repoAgents = agentNames(join(dirname(resolve(teamPath)), 'agents')).filter((a) => !mainAgents.includes(a) && a !== 'lead');
+const annexAgents = repoAgents.slice(0, ANNEX_DESKS);
+if (repoAgents.length > ANNEX_DESKS) {
+  console.warn(`The annex has ${ANNEX_DESKS} desks: ${repoAgents.slice(ANNEX_DESKS).join(', ')} will show up as the lead's work.`);
+}
+// One look shared by every repo agent.
+const REPO_SPRITE = 'repo-agent';
+
+const project = slug(team.project ?? teamPath.split('/').at(-3));
+
+const COLS = 23;
+const ROWS = 24;
+const ANNEX_TOP = 16;
 
 const floor = Array.from({ length: ROWS }, (_, r) =>
   Array.from({ length: COLS }, (_, c) => {
     if (r < 2) return 'exposed_brick_wall';
-    const backOffice = (c >= 12 && c <= 18 && r <= 7) || (c >= 12 && c <= 14 && r >= 8 && r <= 11);
+    if (r >= ANNEX_TOP) return 'annex_floor';
+    const backOffice = (c >= 12 && r <= 7) || (((c >= 12 && c <= 14) || c >= 19) && r >= 8 && r <= 11);
     return backOffice ? 'concrete_accent' : 'main_floor';
   }),
 );
+
+const tiles = { ...original.tiles, annex_floor: 'world_assets/tiles/annex_floor.png' };
 
 const propImages = {
   ...original.propImages,
   desk_wood_modern: 'world_assets/props/prop_0_desk_wood_modern.png',
   whiteboard_large: 'world_assets/props/prop_8_whiteboard_large.png',
-  bookshelf_full: 'world_assets/props/prop_8_bookshelf_full.png',
+  recovery_capsule: 'world_assets/props/prop_namek_recovery_capsule.png',
   potted_plant_small: 'world_assets/props/prop_3_potted_plant_small.png',
   bean_bag_chair_grey: 'world_assets/props/prop_6_bean_bag_chair_grey.png',
   beanbag_orange: 'world_assets/props/prop_6_beanbag_orange.png',
@@ -112,62 +147,64 @@ const desk = (role, x, y, { id = 'wooden_desk_single', w = 3 } = {}) => {
   add('ergonomic_chair', chairX, y + 2, 1, 1, { layer: 'above' });
 };
 
-// --- Wall (y = 0): covers columns 1-18 ---
+// --- Wall (y = 0): covers columns 1-21 ---
 add('large_window', 1, 0, 3, 2);
 add('large_window', 4, 0, 3, 2);
 // The lead works standing at the whiteboard (main.ts removes the seated offset), so its
 // anchor sits on the first floor row, right against the board.
-add('whiteboard_large', 7, 0, 3, 2, { anchors: [{ name: `desk_${roster.lead}`, ox: 1, oy: 2, type: 'work' }] });
+add('whiteboard_large', 7, 0, 3, 2, { anchors: [{ name: 'desk_lead', ox: 1, oy: 2, type: 'work' }] });
 add('wooden_framed_whiteboard', 10, 0.5, 2, 1.5, { anchors: [{ name: 'planning_board', ox: 1, oy: 1.5, type: 'social' }] });
 add('large_window', 12, 0, 3, 2);
 add('large_window', 15, 0, 3, 2);
 add('tall_potted_plant', 18, 0, 1, 2);
+add('large_window', 19, 0, 3, 2);
 
-// The 6 desks, in the order roles are assigned: by the windows (2), back office (2), lower
-// back office and library. A desk without a role stays free (desk_free_N).
-const SLOTS = [
-  { x: 1, y: 3 },
-  { x: 4, y: 3 },
-  { x: 12, y: 3 },
-  { x: 16, y: 3 },
-  { x: 12, y: 8 },
-  { x: 8.25, y: 8, w: 2.7 },
-];
-const slotRole = (i) => roster.desks[i] ?? `free_${i + 1}`;
-
-desk(slotRole(0), SLOTS[0].x, SLOTS[0].y);
-desk(slotRole(1), SLOTS[1].x, SLOTS[1].y);
-
-// --- Reviewer, in the centre ---
-desk(roster.reviewer ?? 'free_centre', 8.25, 3, { w: 2.7 });
-
-// --- Back office ---
-desk(slotRole(2), SLOTS[2].x, SLOTS[2].y);
+// --- Desks (see DESKS) ---
+for (const [name, { x, y, w }] of Object.entries(DESKS)) {
+  desk(mainAgents.includes(name) ? name : `free_${name}`, x, y, w ? { w } : {});
+}
 add('tall_potted_plant', 15, 2.75, 1, 2);
-desk(slotRole(3), SLOTS[3].x, SLOTS[3].y);
-desk(slotRole(4), SLOTS[4].x, SLOTS[4].y);
 
 // --- Coffee bar (bottom left) ---
 add('coffee_bar_counter', 1, 8, 2.5, 2.3, { anchors: [{ name: 'coffee_bar', ox: 1, oy: 2.5, type: 'social' }] });
 add('espresso_machine', 1.4, 8.2, 1.1, 0.8);
 add('mini_fridge', 3.75, 8.5, 0.8, 1.1);
 
-// --- Library ---
-add('bookshelf_full', 5.5, 7.75, 2.7, 3);
-desk(slotRole(5), SLOTS[5].x, SLOTS[5].y, { w: SLOTS[5].w });
+// --- Recovery capsule, beside the reviewer's desk (keeps the image's 678x596 proportions,
+// resting on the same line the bookshelf did) ---
+add('recovery_capsule', 5.5, 8.38, 2.7, 2.37);
 
 // --- Chat corner (bottom right) ---
 add('low_coffee_table', 15.8, 8.6, 1.5, 1.5, { anchors: [{ name: 'chat_table', ox: 0.75, oy: 1.9, type: 'social' }] });
 add('tall_potted_plant', 18, 8, 1, 2);
 
-// --- Rest area: bottom strip with 8 beanbags, one per character ---
-// Beanbags sit on rows 12-13 and their "rest" anchor on row 14, which stays free as a
-// corridor. As with desks, the engine draws a sleeping character 1.2 cells higher.
+// --- Rest area: bottom strip with 5 rugs of 2 beanbags, one beanbag per character ---
+// Beanbags sit on rows 12-13 and their "rest_<name>" anchor on row 14, which stays free as a
+// corridor. As with desks, the engine draws a sleeping character 1.2 cells higher. main.ts
+// sends each character to its own beanbag.
 const BEANBAGS = ['bean_bag_chair_dark', 'beanbag_orange', 'bean_bag_chair_light', 'bean_bag_chair_grey'];
-[1.2, 5.2, 10.2, 14.2].forEach((x) => add('area_rug_lounge', x, 12, 3.8, 2));
-[2, 4, 6, 8, 11, 13, 15, 17].forEach((ax, i) => {
-  add(BEANBAGS[i % BEANBAGS.length], ax - 0.6, 12.3, 1.3, 1.3, {
-    anchors: [{ name: `rest_${i + 1}`, ox: 0.6, oy: 1.7, type: 'rest' }],
+[1.2, 5.2, 10.2, 14.2, 18.2].forEach((x) => add('area_rug_lounge', x, 12, 3.8, 2));
+const BEANBAG_X = [[2, 4], [6, 8], [11, 13], [15, 17], [19, 21]];
+REST_PAIRS.forEach((pair, r) => pair.forEach((name, i) => {
+  const ax = BEANBAG_X[r][i];
+  add(BEANBAGS[(r * 2 + i) % BEANBAGS.length], ax - 0.6, 12.3, 1.3, 1.3, {
+    anchors: [{ name: `rest_${name}`, ox: 0.6, oy: 1.7, type: 'rest' }],
+  });
+}));
+
+// --- Annex: 4 desks for repo agents (rows 16-19), work anchors on row 19 ---
+// Desks at x 3, 8, 13, 18 (centred on the 23 columns) so each chair (columns 4, 9, 14, 19)
+// sits above its own sofa, with a plant beside each desk and columns 7, 12 and 17 free to
+// walk through.
+const ANNEX_X = [3, 8, 13, 18];
+ANNEX_X.forEach((x, i) => desk(annexAgents[i] ?? `annex_free_${i + 1}`, x, ANNEX_TOP));
+[6, 11, 16].forEach((x) => add('tall_potted_plant', x, ANNEX_TOP, 1, 2));
+// --- Annex rest row: one sofa per desk on rows 20-21, "rest_annex_N" anchors on row 22 ---
+ANNEX_X.forEach((x) => add('area_rug_lounge', x - 0.4, 20, 3, 2));
+ANNEX_X.forEach((x, i) => {
+  const ax = x + 1;
+  add(BEANBAGS[(i + 1) % BEANBAGS.length], ax - 0.6, 20.3, 1.3, 1.3, {
+    anchors: [{ name: `rest_annex_${i + 1}`, ox: 0.6, oy: 1.7, type: 'rest' }],
   });
 });
 
@@ -175,15 +212,28 @@ const wanderPoints = [
   { name: 'corridor_west', x: 4, y: 7 },
   { name: 'corridor_centre', x: 10, y: 7 },
   { name: 'corridor_east', x: 15, y: 7 },
+  { name: 'corridor_far_east', x: 20, y: 7 },
   { name: 'corridor_south', x: 10, y: 11 },
+  { name: 'annex_corridor', x: 12, y: 19 },
 ];
 
-// Fixed desk and look per role: the same character always at the same desk.
-const citizens = [roster.lead, ...(roster.reviewer ? [roster.reviewer] : []), ...roster.desks].map((role) => ({
-  agentId: `${roster.project}-${role}`,
-  name: label(role),
-  sprite: roster.sprites[role] ?? SPRITES[0],
-  position: `desk_${role}`,
+// Fixed desk, sofa and look per agent: the same character always in the same places.
+const restOf = (name) => (REST_PAIRS.flat().includes(name) ? `rest_${name}` : undefined);
+const citizens = ['lead', ...deskAgents].map((name) => ({
+  agentId: `${project}-${name}`,
+  name: label(name),
+  sprite: spriteFor(name),
+  position: `desk_${name}`,
+  rest: restOf(name),
+  type: 'agent',
+}));
+// Repo agents in the annex: same look for all of them, each on the sofa below its desk.
+annexAgents.forEach((name, i) => citizens.push({
+  agentId: `${project}-${name}`,
+  name: label(name),
+  sprite: REPO_SPRITE,
+  position: `desk_${name}`,
+  rest: `rest_annex_${i + 1}`,
   type: 'agent',
 }));
 
@@ -192,6 +242,7 @@ const world = {
   gridCols: COLS,
   gridRows: ROWS,
   floor,
+  tiles,
   propImages,
   props,
   wanderPoints,
@@ -199,4 +250,4 @@ const world = {
 };
 
 writeFileSync(new URL('world.json', dir), JSON.stringify(world, null, 2) + '\n');
-console.log(`world.json: ${roster.project}, ${COLS}x${ROWS}, ${props.length} props, ${citizens.length} characters`);
+console.log(`world.json: ${project}, ${COLS}x${ROWS}, ${props.length} props, ${citizens.length} characters (${annexAgents.length} in the annex)`);
