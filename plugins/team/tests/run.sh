@@ -84,6 +84,42 @@ check "team-gate: passing checks" 0 "$(team_gate "$F")"
 check "team-gate: failing check" 2 "$(team_gate "$R")"
 if grep -q "Can't close 'palette'" "$TMP/tg.out"; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); echo "FAIL: team-gate: reports the failure → $(cat "$TMP/tg.out")"; fi
 
+# Workspace: a folder that isn't a repo, with child repos (symlinked or not). Paths carry the
+# child folder as prefix and `cwd` runs the check inside that repo.
+W="$TMP/ws"; mkdir -p "$W/.claude" "$TMP/repos/api" "$W/front"
+for r in "$TMP/repos/api" "$W/front"; do
+  git -C "$r" init -q && git -C "$r" config user.email t@t && git -C "$r" config user.name t
+  echo a >"$r/a.ts" && git -C "$r" add -A && git -C "$r" commit -qm init
+done
+ln -s "$TMP/repos/api" "$W/api"
+jq -n --arg out "$TMP/ws.out" '{gate: {checks: [
+  {name: "api", when: ["api/*"], cwd: "api", run: ("printf \"[%s]\\n\" {files} > " + $out)},
+  {name: "front", when: ["front/*"], run: "echo FRONT-FAILURE; exit 1"}]}}' >"$W/.claude/team.json"
+check "gate workspace: no changes" 0 "$(gate "$W")"
+echo x >>"$TMP/repos/api/a.ts"; echo y >"$TMP/repos/api/new.ts"
+check "gate workspace: symlinked repo, passing check" 0 "$(gate "$W")"
+check "gate workspace: paths relative to the repo" "$(printf '[a.ts]\n[new.ts]')" "$(cat "$TMP/ws.out" 2>/dev/null)"
+echo z >>"$W/front/a.ts"
+check "gate workspace: failing check in another repo" 2 "$(gate "$W")"
+# Same workspace inside a stray parent repo (an empty `git init` in $HOME), with a folder that
+# groups two repos one level down (group/front, group/back).
+H="$TMP/home"; WH="$H/ws"; mkdir -p "$WH/.claude" "$H/group/front" "$H/group/back"
+git -C "$H" init -q
+for r in "$H/group/front" "$H/group/back"; do
+  git -C "$r" init -q && git -C "$r" config user.email t@t && git -C "$r" config user.name t
+  echo a >"$r/a.ts" && git -C "$r" add -A && git -C "$r" commit -qm init
+done
+ln -s ../group "$WH/group"
+jq -n --arg out "$TMP/wsh.out" '{gate: {checks: [
+  {name: "back", when: ["group/back/*"], cwd: "group/back", run: ("printf \"[%s]\\n\" {files} > " + $out)},
+  {name: "front", when: ["group/front/*"], run: "exit 1"}]}}' >"$WH/.claude/team.json"
+check "gate workspace in a parent repo: no changes" 0 "$(gate "$WH")"
+echo x >>"$H/group/back/a.ts"
+check "gate workspace in a parent repo: nested repo, passing check" 0 "$(gate "$WH")"
+check "gate workspace in a parent repo: paths relative to the nested repo" "[a.ts]" "$(cat "$TMP/wsh.out" 2>/dev/null)"
+echo z >>"$H/group/front/a.ts"
+check "gate workspace in a parent repo: failing nested repo" 2 "$(gate "$WH")"
+
 mkdir -p "$TMP/no-config"
 check "gate: project without team.json" 0 "$(gate "$TMP/no-config")"
 check "gate: releases the lock" 0 "$(ls "${TMPDIR:-/tmp}"/team-gate-*.lock 2>/dev/null | wc -l | tr -d ' ')"

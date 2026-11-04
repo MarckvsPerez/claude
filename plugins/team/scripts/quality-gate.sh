@@ -10,7 +10,8 @@
 #     gate.final instead: the reviewer runs those once, at the end of the change.
 # Without team.json or without checks, it does nothing.
 #
-# The scope comes from the files changed in the working tree, which the whole team shares.
+# The scope comes from the files changed in the working tree, which the whole team shares. In a
+# workspace (a root that is not a repo), from each child repo, prefixed with its folder.
 # Checks run one at a time (a per-project lock): several at once overwrite each other's build
 # artefacts. Tests that write to a database shouldn't be here: the reviewer runs them one
 # after another.
@@ -26,7 +27,44 @@ CONFIG="$ROOT/.claude/team.json"
 cd "$ROOT" || exit 0
 
 IGNORE="$(jq -r '.gate.ignore // [] | .[]' "$CONFIG")"
-CHANGED="$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } 2>/dev/null | sort -u | sed '/^$/d')"
+
+# Changed files in a git repo (tracked changes and untracked files), one per line.
+repo_changes() { # repo_changes <dir>
+  { git -C "$1" diff --name-only HEAD; git -C "$1" ls-files --others --exclude-standard; } 2>/dev/null
+}
+# True when <dir> is the top of a git repo, not just somewhere inside one (a stray repo in
+# $HOME would otherwise swallow every folder under it).
+is_repo_root() { # is_repo_root <dir>
+  local top
+  top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  [[ "$top" == "$(cd "$1" && pwd -P)" ]]
+}
+# A workspace is a folder that isn't a repo root and holds several repos (usually symlinks
+# to them), directly or one level down (group/front, group/back). Each repo's changes are
+# listed with its path as prefix, so `when`, `owns` and `cwd` are written "repo-api/*",
+# "repo-api", "group/front"…
+workspace_repos() {
+  local dir sub
+  for dir in */; do
+    dir="${dir%/}"
+    if is_repo_root "$dir"; then echo "$dir"; continue; fi
+    for sub in "$dir"/*/; do
+      sub="${sub%/}"
+      [[ -d "$sub" ]] && is_repo_root "$sub" && echo "$sub"
+    done
+  done
+}
+REPOS=""
+is_repo_root . || REPOS="$(workspace_repos)"
+if [[ -z "$REPOS" ]]; then
+  CHANGED="$(repo_changes . | sort -u | sed '/^$/d')"
+else
+  CHANGED="$(
+    while IFS= read -r repo; do
+      repo_changes "$repo" | sed "/^\$/d; s|^|$repo/|"
+    done <<<"$REPOS" | sort -u
+  )"
+fi
 
 matches_any() {
   local file="$1" patterns="$2" pattern

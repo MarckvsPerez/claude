@@ -10,6 +10,16 @@ You will leave the project ready for a lead session to create the `team` plugin'
 
 Talk to the user in the language they write in, including the proposal in step 2.
 
+## 0. Repo or workspace
+
+If the project root is not the top of a git repo (`git rev-parse --show-toplevel` fails or prints another folder: a stray repo in `$HOME` counts as "another folder"), it is a **workspace**: a folder that groups several repos so one team works across them, usually as symlinks (`repo-api -> ../repo-api`). A symlinked folder that itself groups repos (`psy-portal/` with `psy-portal-front/` and `psy-portal-back/`) works too: its repos are one level down and their prefix is the full path (`psy-portal/psy-portal-front/*`). Then:
+
+- `team.json`, `.claude/settings.json` and the addenda live in the workspace, never inside a repo.
+- Every pattern carries the repo folder as prefix: `owns: ["repo-api/*"]`, gate `when: ["repo-api/src/*"]`, `cwd: "repo-api"`. The gate reads each child repo's changes on its own.
+- Explore each repo in step 1 (its rules, stack, checks); a repo's own `AGENTS.md`/`CLAUDE.md` still applies to the files in it. Give one repo to each role where possible.
+- When the children are symlinks, add their real paths to `permissions.additionalDirectories` in the workspace's `.claude/settings.json` (for example `"../repo-api"`), so editing through the symlink doesn't fall outside the project.
+- The "Agent team" section of step 3.4 goes in a `CLAUDE.md` at the workspace root, not in the repos.
+
 ## 1. Explore before proposing
 
 With the `team:explorer` worker or with Read, Grep and Glob, find out:

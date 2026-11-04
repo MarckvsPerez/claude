@@ -97,6 +97,19 @@ claude plugin enable team@marcperez-plugins --scope project
 
 `--scope project` writes it to the repo's `.claude/settings.json` and shares it with whoever clones it; `--scope local` keeps it for you only. Then, in a new session of that repo: `/team:setup`.
 
+### Workspace: one team across several repos
+
+A workspace is a folder that is **not** a repo and holds the repos as symlinks. The configuration lives there, so no repo is touched:
+
+```bash
+mkdir -p ~/Giunti/ws-<name> && cd ~/Giunti/ws-<name>
+ln -s ../repo-api repo-api && ln -s ../repo-front repo-front   # one per repo
+claude plugin enable team@marcperez-plugins --scope project
+claude   # then /team:setup
+```
+
+Patterns carry the repo folder as prefix (`owns: ["repo-api/*"]`, `cwd: "repo-api"`), and the gate reads each repo's `git diff` on its own. A folder that groups repos (`psy-portal/{psy-portal-front,psy-portal-back}`) can be linked whole: repos one level down are found too, with the full path as prefix. Open Claude in the workspace folder, never inside one of the repos. The workspace may live inside another repo (even a stray `git init` in `$HOME`): what matters is that it isn't a repo's top folder.
+
 ## Test the scripts
 
 ```bash
