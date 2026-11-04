@@ -17,7 +17,7 @@ function worldSavePlugin() {
         req.on('end', () => {
           try {
             const data = JSON.parse(body);
-            const worldId = data.worldId ?? 'cozy-startup';
+            const worldId = data.worldId ?? 'Capsule_corp';
             delete data.worldId;
 
             const safeId = worldId.replace(/[^a-zA-Z0-9_-]/g, '');

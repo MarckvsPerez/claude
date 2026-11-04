@@ -2,8 +2,8 @@ import { Miniverse, PropSystem, Editor, createStandardSpriteConfig } from '@mini
 import type { SceneConfig, SpriteSheetConfig, CitizenDef } from '@miniverse/core';
 
 // Team: the world is ?world=<id>, else the one scripts/build-office.mjs last built
-// (public/worlds/current.json), else cozy-startup. Set by resolveWorld() before anything loads.
-let WORLD_ID = 'cozy-startup';
+// (public/worlds/current.json), else Capsule_corp. Set by resolveWorld() before anything loads.
+let WORLD_ID = 'Capsule_corp';
 let basePath = `/worlds/${WORLD_ID}`;
 
 async function resolveWorld() {

@@ -1,7 +1,7 @@
 // Builds the zoned office for one project's team, in one of the worlds in scripts/worlds/.
 // Usage:
 //   node scripts/build-office.mjs --team path/to/.claude/team.json [--plugin-agents dir] [--world id]
-// The world is --world, else team.json's "miniverse.world", else cozy-startup. It rewrites
+// The world is --world, else team.json's "miniverse.world", else Capsule_corp. It rewrites
 // public/worlds/<world>/world.json and public/worlds/current.json, which tells the app (main.ts)
 // which world to open.
 //
@@ -43,7 +43,7 @@ const team = JSON.parse(readFileSync(teamPath, 'utf8'));
 
 const here = dirname(fileURLToPath(import.meta.url));
 const worldsDir = resolve(here, '../public/worlds');
-const worldId = (arg('--world') ?? team.miniverse?.world ?? 'cozy-startup').replace(/[^a-zA-Z0-9_-]/g, '');
+const worldId = (arg('--world') ?? team.miniverse?.world ?? 'Capsule_corp').replace(/[^a-zA-Z0-9_-]/g, '');
 const layoutModule = join(here, 'worlds', `${worldId}.mjs`);
 if (!existsSync(layoutModule)) {
   const known = readdirSync(join(here, 'worlds')).filter((f) => f.endsWith('.mjs')).map((f) => f.replace(/\.mjs$/, ''));
