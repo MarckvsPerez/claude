@@ -39,6 +39,7 @@ LEAD
 | `skills/lead` | Lead protocol: size, create, split, coordinate and close |
 | `hooks/hooks.json` | TaskCompleted (checks + quick review), database guard and Miniverse bridge |
 | `bin/db-query` | Read-only queries on the local database, for the database agent |
+| `templates/db.env.example`, `templates/readonly-user.sql` | Read-only credentials (names only) and the SQL for the read-only user, copied to the project by `/team:setup` |
 | `bin/team-gate` | Runs the `gate.checks` once outside a task, for size S changes |
 | `templates/` | Project configuration (`team.example.json`) and specialist template |
 
@@ -79,6 +80,22 @@ A plugin can't set environment variables, so each project turns on in its `.clau
 ```
 
 Don't turn it on globally: with agent teams on, any named subagent becomes a teammate.
+
+### Database access
+
+The `database` agent audits data in any configured environment (`local`, `dev`, `pre`, `prod`…), always read-only. The contract:
+
+| | |
+|---|---|
+| **What it does** | Read queries (`SELECT`, `SHOW`, `EXPLAIN`, `DESCRIBE`, `WITH`) through `db-query [--env name] [--db name]`, one statement per call, at most 200 lines of output and 15 s per query. Reports with aggregates and ids |
+| **What it doesn't do** | Write code or data, open another client, create users, see the credentials or show personal data |
+| **Connection** | `.claude/team.json` → `database.environments.<env>`: host and port (for remote ones, usually an SSH tunnel on this machine) and, for `local`, compose project and service. No secrets, versioned. A flat `database` block counts as `local` |
+| **Credentials** | `.claude/db.<env>.env`: `DB_NAME`, `DB_READONLY_USER`, `DB_READONLY_PASSWORD`. Never in git: `.gitignore` covers `.claude/db.*.env` and `db-query` refuses to run if the file is tracked or not ignored. `.claude/db.env.example` (names only) is versioned |
+| **User** | One per environment, created by you with `.claude/db/readonly-user.sql`: `SELECT, SHOW VIEW` only, no roles. `db-query` checks its grants on every call and refuses anything else |
+
+In remote environments the read-only user is the protection: if it can't write, nothing the agent sends can. `local` is also checked to be really local (compose port or a non-tunnel listener), so a tunnel can't pass as the local database. On top of that, `db-query` rejects non-read SQL and runs the session with `transaction_read_only`.
+
+The `PreToolUse` guard limits the agent's Bash to `db-query` with a quoted heredoc and blocks it from reading any `.claude/db.<env>.env`, the legacy `envFile` or any `.env*` file, or running Grep over a folder that holds one. The old format (`database.envFile` + `nameVar`/`userVar`/`passwordVar`) still works for `local` when `.claude/db.local.env` doesn't exist, with a deprecation warning.
 
 ## Install
 

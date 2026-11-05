@@ -98,15 +98,27 @@
   },
   "database": {
     "engine": "mysql",
-    "host": "127.0.0.1",
-    "port": 3306,
-    "composeProject": "my-project-local",
-    "service": "db",
-    "containerPort": 3306,
-    "envFile": "env/.env.local",
-    "nameVar": "DB_NAME",
-    "userVar": "DB_READONLY_USER",
-    "passwordVar": "DB_READONLY_PASSWORD"
+    "environments": {
+      "local": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "composeProject": "my-project-local",
+        "service": "db",
+        "containerPort": 3306
+      },
+      "dev": {
+        "host": "127.0.0.1",
+        "port": 13306
+      },
+      "pre": {
+        "host": "127.0.0.1",
+        "port": 23306
+      },
+      "prod": {
+        "host": "127.0.0.1",
+        "port": 33306
+      }
+    }
   },
   "miniverse": {
     "url": "http://127.0.0.1:4321"

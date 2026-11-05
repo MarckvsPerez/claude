@@ -18,9 +18,12 @@ check() { # check <description> <expected> <actual>
 mkdir -p "$TMP/guard/.claude" "$TMP/guard-custom/.claude" "$TMP/guard-none"
 jq -n '{roles: {database: {agent: "team:database"}}}' >"$TMP/guard/.claude/team.json"
 jq -n '{roles: {database: {agent: "data-auditor"}}}' >"$TMP/guard-custom/.claude/team.json"
-guard_in() { printf '%s' "$3" | jq -Rs --arg a "$2" '{agent_type: $a, tool_input: {command: .}}' | CLAUDE_PROJECT_DIR="$1" "$PLUGIN/scripts/db-readonly-guard.sh" >/dev/null 2>&1; echo $?; }
+guard_in() { printf '%s' "$3" | jq -Rs --arg a "$2" '{agent_type: $a, tool_name: "Bash", tool_input: {command: .}}' | CLAUDE_PROJECT_DIR="$1" "$PLUGIN/scripts/db-readonly-guard.sh" >/dev/null 2>&1; echo $?; }
 guard() { guard_in "$TMP/guard" "$@"; }
 check "guard: allowed call" 0 "$(guard team:database $'db-query <<\'SQL\'\nSELECT 1\nSQL')"
+check "guard: with --env" 0 "$(guard team:database $'db-query --env prod <<\'SQL\'\nSELECT 1\nSQL')"
+check "guard: with --env and --db" 0 "$(guard team:database $'db-query --env pre --db test_a <<\'SQL\'\nSELECT 1\nSQL')"
+check "guard: --env with a command" 2 "$(guard team:database $'db-query --env prod;rm <<\'SQL\'\nSELECT 1\nSQL')"
 check "guard: with --db" 0 "$(guard team:database $'db-query --db test_a <<\'SQL\'\nSELECT 1\nSQL')"
 check "guard: direct mysql" 2 "$(guard team:database 'mysql -uroot -e "DROP TABLE x"')"
 check "guard: command after the heredoc" 2 "$(guard team:database $'db-query <<\'SQL\'\nSELECT 1\nSQL\nrm -rf /\nSQL')"
@@ -31,6 +34,28 @@ check "guard: other agent is not filtered" 0 "$(guard team:back 'mysql -uroot')"
 check "guard: main session is not filtered" 0 "$(guard '' 'ls')"
 check "guard: repo database agent from team.json" 2 "$(guard_in "$TMP/guard-custom" data-auditor 'mysql -uroot')"
 check "guard: repo without team.json is left alone" 0 "$(guard_in "$TMP/guard-none" database '.claude/bin/db-query.sh <<x')"
+
+# Read and Grep: the database agent never sees the credentials.
+G="$TMP/guard-files"
+mkdir -p "$G/.claude" "$G/env" "$G/migrations" "$G/src/config"
+jq -n '{roles: {database: {agent: "team:database"}}, database: {envFile: "env/app.conf"}}' >"$G/.claude/team.json"
+touch "$G/.claude/db.local.env" "$G/.claude/db.prod.env" "$G/env/app.conf" "$G/src/config/.env.test" "$G/migrations/001.sql"
+ln -s "$G/.claude/db.local.env" "$G/migrations/innocent.sql"
+guard_tool() { jq -n --arg a "$1" --arg t "$2" --argjson i "$3" --arg c "$G" '{agent_type: $a, tool_name: $t, tool_input: $i, cwd: $c}' | CLAUDE_PROJECT_DIR="$G" "$PLUGIN/scripts/db-readonly-guard.sh" >/dev/null 2>&1; echo $?; }
+check "guard Read: credentials file" 2 "$(guard_tool team:database Read '{"file_path":".claude/db.local.env"}')"
+check "guard Read: prod credentials" 2 "$(guard_tool team:database Read '{"file_path":".claude/db.prod.env"}')"
+check "guard Read: credentials file through .." 2 "$(guard_tool team:database Read '{"file_path":"migrations/../.claude/db.local.env"}')"
+check "guard Read: credentials file through a symlink" 2 "$(guard_tool team:database Read '{"file_path":"migrations/innocent.sql"}')"
+check "guard Read: legacy envFile" 2 "$(guard_tool team:database Read '{"file_path":"env/app.conf"}')"
+check "guard Read: any .env file" 2 "$(guard_tool team:database Read '{"file_path":"src/config/.env.test"}')"
+check "guard Read: a migration" 0 "$(guard_tool team:database Read '{"file_path":"migrations/001.sql"}')"
+check "guard Read: other agent is not filtered" 0 "$(guard_tool team:back Read '{"file_path":".claude/db.local.env"}')"
+check "guard Grep: project root" 2 "$(guard_tool team:database Grep '{"pattern":"PASSWORD"}')"
+check "guard Grep: .claude folder" 2 "$(guard_tool team:database Grep '{"pattern":"x","path":".claude"}')"
+check "guard Grep: folder with a .env" 2 "$(guard_tool team:database Grep '{"pattern":"x","path":"src"}')"
+check "guard Grep: credentials file itself" 2 "$(guard_tool team:database Grep '{"pattern":"x","path":"env/app.conf"}')"
+check "guard Grep: migrations folder" 0 "$(guard_tool team:database Grep '{"pattern":"x","path":"migrations"}')"
+check "guard Glob: names only, allowed" 0 "$(guard_tool team:database Glob '{"pattern":"**/*"}')"
 
 # --- db-query SQL validation (fails before connecting) ---
 mkdir -p "$TMP/db/.claude" "$TMP/db/env"
@@ -46,6 +71,43 @@ expect_msg "db-query: OUTFILE" "SELECT * INTO OUTFILE '/tmp/x' FROM a" "forbidde
 expect_msg "db-query: valid read reaches the local-database check" "SELECT status, COUNT(*) FROM orders GROUP BY status" "doesn't publish"
 jq '.database.host = "10.0.0.5"' "$TMP/db/.claude/team.json" >"$TMP/t.json" && mv "$TMP/t.json" "$TMP/db/.claude/team.json"
 expect_msg "db-query: remote host" "SELECT 1" "is not local"
+
+expect_msg "db-query: legacy envFile warns" "SELECT 1" "deprecated"
+
+# Credentials in .claude/db.local.env: they win over envFile and must stay out of git.
+C="$TMP/cred"
+mkdir -p "$C/.claude"
+git -C "$C" init -q && git -C "$C" config user.email t@t && git -C "$C" config user.name t
+jq -n '{database: {engine: "mysql", host: "127.0.0.1", port: 3999, composeProject: "team-test-missing", service: "db"}}' >"$C/.claude/team.json"
+cquery() { printf '%s' "$1" | CLAUDE_PROJECT_DIR="$C" "$PLUGIN/bin/db-query" 2>&1; }
+expect_cred() { if grep -q "$2" <<<"$(cquery "SELECT 1")"; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); echo "FAIL: $1 → $(cquery "SELECT 1")"; fi; }
+expect_cred "db-query: no credentials" "create .claude/db.local.env"
+printf 'DB_NAME=fake\nDB_READONLY_USER=ro\nDB_READONLY_PASSWORD=x\n' >"$C/.claude/db.local.env"
+expect_cred "db-query: credentials not ignored" "not ignored by git"
+echo '.claude/db.*.env' >"$C/.gitignore"
+expect_cred "db-query: ignored credentials reach the local-database check" "doesn't publish"
+if grep -q deprecated <<<"$(cquery "SELECT 1")"; then FAIL=$((FAIL + 1)); echo "FAIL: db-query: new format warns as deprecated"; else PASS=$((PASS + 1)); fi
+git -C "$C" add -f .claude/db.local.env
+expect_cred "db-query: tracked credentials" "tracked by git"
+git -C "$C" rm -q --cached .claude/db.local.env
+printf 'DB_NAME=fake\nDB_READONLY_USER=ro\n' >"$C/.claude/db.local.env"
+expect_cred "db-query: missing password" "missing read-only user or password"
+
+# Environments: local is checked to be local; dev/pre/prod go through the read-only user only.
+printf 'DB_NAME=fake\nDB_READONLY_USER=ro\nDB_READONLY_PASSWORD=x\n' >"$C/.claude/db.local.env"
+envq() { printf 'SELECT 1' | CLAUDE_PROJECT_DIR="$C" "$PLUGIN/bin/db-query" "$@" 2>&1; }
+expect_env() { local m="$1" want="$2"; shift 2; if grep -q "$want" <<<"$(envq "$@")"; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); echo "FAIL: $m → $(envq "$@")"; fi; }
+expect_env "db-query: flat config, remote env" "not configured" --env prod
+jq '.database = {engine: "mysql", environments: {local: {host: "127.0.0.1", port: 3999, composeProject: "team-test-missing", service: "db"}, prod: {host: "127.0.0.1", port: 3999}}}' "$C/.claude/team.json" >"$TMP/t.json" && mv "$TMP/t.json" "$C/.claude/team.json"
+expect_env "db-query: unknown env" "not in database.environments" --env staging
+expect_env "db-query: invalid env name" "valid environment name" --env 'Prod;x'
+expect_env "db-query: env without credentials" "create .claude/db.prod.env" --env prod
+expect_env "db-query: local env keeps the local check" "doesn't publish"
+printf 'DB_NAME=fake\nDB_READONLY_USER=ro\nDB_READONLY_PASSWORD=x\n' >"$C/.claude/db.prod.env"
+if command -v mysql >/dev/null; then
+  expect_env "db-query: remote env skips the local check and tries the read-only user" "can't connect with the read-only user" --env prod
+fi
+expect_env "db-query: SQL as argument" "through stdin" --env prod extra
 
 # --- Quality gate ---
 R="$TMP/gate"

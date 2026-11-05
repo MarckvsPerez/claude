@@ -28,7 +28,7 @@ With the `team:explorer` worker or with Read, Grep and Glob, find out:
 - The stack: manifests (`package.json`, `composer.json`, `pyproject.toml`, `go.mod`…), frameworks and their versions.
 - The layout: where the UI, the API, the migrations, the styles and design tokens, the code that calls AI models and the documentation live.
 - How quality is checked: typecheck, lint and test scripts for each package. Tell unit tests apart from tests that write to a database.
-- The local database: engine, `docker compose` and published port, and the environment file with its variable names. **Don't read or show secret values**: names only.
+- The databases: engine, the local one's `docker compose` and published port, and which remote environments (dev, pre, prod) the user reaches and on which local port (usually an SSH tunnel). Check which `.claude/db.<env>.env` exist and whether `.gitignore` ignores `.claude/db.*.env`; an existing team.json with `database.envFile` uses the deprecated format and is migrated. **Don't read or show secret values**: names only.
 - **What is already set up**, because the project may have been configured before (by an earlier setup or by hand):
   - `.claude/team.json`: if it exists, this run adjusts it; it doesn't start from scratch.
   - The project's own agents in `.claude/agents/*.md`: read each one's description, model and what it really covers.
@@ -49,7 +49,7 @@ Present the user a proposal with:
   - `gate.checks`: fast and scoped. Typecheck with an incremental cache (`tsc --noEmit --incremental`) and lint of the changed files only, with `{files}` in `run` (the gate replaces it with the changed files that match `when`; with `cwd`, it runs in that subfolder and the paths are relative to it, which is useful in monorepos such as `frontend/` and `backend/`). Use `--cache` when the linter supports it.
   - `gate.final`: slow, whole-project checks (`next build` or equivalent, the full unit suite). The `reviewer` runs them once, at the end of the change. Tests that write to a database **don't** go in either list.
 - Whether to turn on the automatic per-task review (`gate.review`) and from what size (`gate.reviewMinLines`, for example 40). Warn that each review is one model call per closed task, and that below the threshold the final reviewer covers it.
-- The read-only database configuration, if there is a database.
+- The read-only database configuration, if there is a database: one entry per environment in `team.json` → `database.environments` (host, port and, for `local`, compose project and service; no secrets) and credentials in `.claude/db.<env>.env`. Every environment is read-only.
 - Whether they want to watch the team in Miniverse.
 
 **Don't write anything until the user confirms or adjusts the proposal.**
@@ -67,7 +67,12 @@ After confirmation:
    { "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1", "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1" } }
    ```
    Explain why it goes here and not in the global configuration: with agent teams on, any named subagent Claude launches becomes a teammate, and that isn't wanted in every project. Task tools are off by default on newer models, and without them there is no shared task list and TaskCompleted never fires.
-3. If there is a database: don't create the user yourself. Write to `.claude/db/readonly-user.sql` the SQL to create a SELECT-only user on the local database, for the user to run, and tell them which variables to add to their environment file.
+3. If there is a database:
+   - Don't create the users yourself. Copy `${CLAUDE_PLUGIN_ROOT}/templates/readonly-user.sql` to `.claude/db/readonly-user.sql` with the database name filled in, for the user (or whoever administers each environment) to run once per environment.
+   - Copy `${CLAUDE_PLUGIN_ROOT}/templates/db.env.example` to `.claude/db.env.example` (versioned, names only) and add `.claude/db.*.env` to `.gitignore` if it isn't covered. Check it with `git check-ignore -q .claude/db.prod.env`.
+   - Tell the user to create one `.claude/db.<env>.env` per environment from that example. Never create, read or fill in those files yourself: the values are theirs.
+   - If team.json used `database.envFile` or a flat `database` block, move it to `database.environments.local` and remove `envFile`, `nameVar`, `userVar` and `passwordVar` once the user confirms `.claude/db.local.env` is filled in. Until then `db-query` keeps reading the old one, with a warning.
+   - In a workspace, `.gitignore` doesn't apply: keep the `.claude/db.*.env` files out of any repo.
 4. Add a short "Agent team" section to `AGENTS.md` or `CLAUDE.md`, or replace the existing one if it describes an earlier setup: the active roles, that the lead creates them from the `agent` in `.claude/team.json`, that changes go through `/team:run <change>` (or the `team:lead` skill), which sizes them first so small changes don't create a team.
 5. Carry out what the table in step 2 decided for the existing agents and hooks. Retire agents and remove hooks only when the user confirmed it for that item, and keep a copy first outside the repo (for example in `~/.claude/backups/<date>/<project>/`), unless git already tracks the file unchanged. Project agents that stay coexist with the plugin's (`front` and `team:front` are different agents).
 

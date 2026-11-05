@@ -4,11 +4,17 @@
 # while the plugin is enabled.
 #
 # Usage (SQL always through a heredoc with a quoted delimiter):
-#   db-query [--db other_db] <<'SQL'
+#   db-query [--env pre] [--db other_db] <<'SQL'
 #   SELECT COUNT(*) FROM orders
 #   SQL
 #
-# Configured in .claude/team.json → database (see templates/team.example.json).
+# Every environment (local, dev, pre, prod…) is READ-ONLY. The protection is the user: it
+# must have SELECT only, and that is checked on every call. The local environment is also
+# checked to be really local (not a tunnel to another machine).
+#
+# Connection per environment in .claude/team.json → database.environments.<env> (see
+# templates/team.example.json); credentials in .claude/db.<env>.env (see
+# templates/db.env.example), which never goes to git.
 # Supported engines: mysql.
 
 set -euo pipefail
@@ -18,13 +24,56 @@ fail() { echo "db-query: $*" >&2; exit 1; }
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 CONFIG="$ROOT/.claude/team.json"
 [[ -f "$CONFIG" ]] || fail "no .claude/team.json in $ROOT"
-cfg() { jq -r ".database.$1 // empty" "$CONFIG"; }
+
+ENV_NAME="local"
+DB_OVERRIDE=""
+while (( $# > 0 )); do
+  case "$1" in
+    --env) [[ "${2:-}" =~ ^[a-z][a-z0-9_-]*$ ]] || fail "--env needs a valid environment name"; ENV_NAME="$2"; shift 2 ;;
+    --db) [[ "${2:-}" =~ ^[A-Za-z0-9_]+$ ]] || fail "--db needs a valid database name"; DB_OVERRIDE="$2"; shift 2 ;;
+    *) fail "the SQL goes through stdin (heredoc), not as an argument" ;;
+  esac
+done
+
+# Environment config: database.environments.<env>; a flat database block is the local one.
+if [[ "$(jq -r '.database.environments // empty | type' "$CONFIG")" == "object" ]]; then
+  [[ "$(jq -r --arg e "$ENV_NAME" '.database.environments[$e] // empty | type' "$CONFIG")" == "object" ]] \
+    || fail "environment '$ENV_NAME' is not in database.environments (has: $(jq -r '.database.environments | keys | join(", ")' "$CONFIG"))"
+  cfg() { jq -r --arg e "$ENV_NAME" --arg k "$1" '.database.environments[$e][$k] // .database[$k] // empty' "$CONFIG"; }
+else
+  [[ "$ENV_NAME" == "local" ]] || fail "environment '$ENV_NAME' not configured: add database.environments.$ENV_NAME to team.json"
+  cfg() { jq -r --arg k "$1" '.database[$k] // empty' "$CONFIG"; }
+fi
 
 ENGINE="$(cfg engine)"
 [[ "$ENGINE" == "mysql" ]] || fail "engine '${ENGINE:-undefined}' not supported (mysql only)"
 
-ENV_FILE="$ROOT/$(cfg envFile)"
-[[ -f "$ENV_FILE" ]] || fail "environment file $(cfg envFile) not found"
+# Credentials: .claude/db.<env>.env with fixed names (DB_NAME, DB_READONLY_USER,
+# DB_READONLY_PASSWORD), out of git. For local, the legacy envFile + *Var keys are still read
+# when that file doesn't exist.
+CRED_FILE="$ROOT/.claude/db.$ENV_NAME.env"
+if [[ -f "$CRED_FILE" ]]; then
+  ENV_FILE="$CRED_FILE"
+  NAME_VAR="DB_NAME"; USER_VAR="DB_READONLY_USER"; PASSWORD_VAR="DB_READONLY_PASSWORD"
+elif [[ "$ENV_NAME" == "local" && -n "$(cfg envFile)" ]]; then
+  ENV_FILE="$ROOT/$(cfg envFile)"
+  [[ -f "$ENV_FILE" ]] || fail "environment file $(cfg envFile) not found"
+  NAME_VAR="$(cfg nameVar)"; USER_VAR="$(cfg userVar)"; PASSWORD_VAR="$(cfg passwordVar)"
+  echo "db-query: database.envFile is deprecated; move the read-only credentials to .claude/db.local.env" >&2
+else
+  fail "no credentials for '$ENV_NAME': create .claude/db.$ENV_NAME.env (see .claude/db.env.example)"
+fi
+# A credentials file in git ends up on the remote: refuse to use it.
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  REL="${ENV_FILE#"$ROOT"/}"
+  if git -C "$ROOT" ls-files --error-unmatch -- "$REL" >/dev/null 2>&1; then
+    fail "$REL is tracked by git; remove it from the index (git rm --cached) and ignore it"
+  fi
+  if [[ "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" == "$(cd "$ROOT" && pwd -P)" ]] \
+    && ! git -C "$ROOT" check-ignore -q -- "$REL"; then
+    fail "$REL is not ignored by git; add '.claude/db.*.env' to .gitignore"
+  fi
+fi
 # Reads a key without sourcing: the file is never executed.
 env_value() {
   local value
@@ -33,20 +82,13 @@ env_value() {
   printf '%s' "$value"
 }
 
-DB_NAME="$(env_value "$(cfg nameVar)")"
-if [[ "${1:-}" == "--db" ]]; then
-  [[ "${2:-}" =~ ^[A-Za-z0-9_]+$ ]] || fail "--db needs a valid database name"
-  DB_NAME="$2"
-  shift 2
-fi
-(( $# == 0 )) || fail "the SQL goes through stdin (heredoc), not as an argument"
-
+DB_NAME="${DB_OVERRIDE:-$(env_value "$NAME_VAR")}"
 HOST="$(cfg host)"; HOST="${HOST:-127.0.0.1}"
 PORT="$(cfg port)"; PORT="${PORT:-3306}"
-RO_USER="$(env_value "$(cfg userVar)")"
-RO_PASSWORD="$(env_value "$(cfg passwordVar)")"
-[[ -n "$DB_NAME" ]] || fail "missing database name ($(cfg nameVar))"
-[[ -n "$RO_USER" && -n "$RO_PASSWORD" ]] || fail "missing read-only user or password ($(cfg userVar), $(cfg passwordVar))"
+RO_USER="$(env_value "$USER_VAR")"
+RO_PASSWORD="$(env_value "$PASSWORD_VAR")"
+[[ -n "$DB_NAME" ]] || fail "missing database name ($NAME_VAR)"
+[[ -n "$RO_USER" && -n "$RO_PASSWORD" ]] || fail "missing read-only user or password ($USER_VAR, $PASSWORD_VAR)"
 
 # 1. The SQL: a single read statement, no comments (MySQL executes /*! ... */).
 SQL="$(cat)"
@@ -65,26 +107,29 @@ if grep -Eiwq -- "$FORBIDDEN" <<<"$SQL"; then
   fail "the SQL contains a forbidden word: $(grep -Eiwo -- "$FORBIDDEN" <<<"$SQL" | head -n 1)"
 fi
 
-# 2. The target has to be really local.
-case "$HOST" in 127.0.0.1 | localhost | ::1) ;; *) fail "host '$HOST' is not local" ;; esac
-export PATH="$PATH:/Applications/Docker.app/Contents/Resources/bin"
-COMPOSE_PROJECT="$(cfg composeProject)"
-if [[ -n "$COMPOSE_PROJECT" ]]; then
-  # The port must be the one the local compose container publishes, on loopback.
-  command -v docker >/dev/null || fail "docker not found: can't check that the database is local"
-  SERVICE="$(cfg service)"; SERVICE="${SERVICE:-db}"
-  CONTAINER_PORT="$(cfg containerPort)"; CONTAINER_PORT="${CONTAINER_PORT:-3306}"
-  PUBLISHED="$(docker compose -p "$COMPOSE_PROJECT" port "$SERVICE" "$CONTAINER_PORT" 2>/dev/null || true)"
-  [[ "$PUBLISHED" == "127.0.0.1:$PORT" || "$PUBLISHED" == "0.0.0.0:$PORT" ]] \
-    || fail "compose project '$COMPOSE_PROJECT' doesn't publish $SERVICE on port $PORT (publishes: '${PUBLISHED:-nothing}')"
-else
-  # No compose: whatever listens on the port can't be a tunnel to another machine.
-  LISTENER="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR == 2 {print $1}')"
-  [[ -n "$LISTENER" ]] || fail "nothing listens on port $PORT"
-  case "$LISTENER" in
-    ssh | autossh | sshpass | kubectl | gcloud | cloud_sql* | cloud-sql* | socat | aws | session-m*)
-      fail "port $PORT is served by '$LISTENER', which looks like a tunnel to another machine" ;;
-  esac
+# 2. The local environment has to be really local. Remote ones (dev, pre, prod) usually go
+#    through a tunnel on this machine: there the read-only user is what protects them.
+if [[ "$ENV_NAME" == "local" ]]; then
+  case "$HOST" in 127.0.0.1 | localhost | ::1) ;; *) fail "host '$HOST' is not local" ;; esac
+  export PATH="$PATH:/Applications/Docker.app/Contents/Resources/bin"
+  COMPOSE_PROJECT="$(cfg composeProject)"
+  if [[ -n "$COMPOSE_PROJECT" ]]; then
+    # The port must be the one the local compose container publishes, on loopback.
+    command -v docker >/dev/null || fail "docker not found: can't check that the database is local"
+    SERVICE="$(cfg service)"; SERVICE="${SERVICE:-db}"
+    CONTAINER_PORT="$(cfg containerPort)"; CONTAINER_PORT="${CONTAINER_PORT:-3306}"
+    PUBLISHED="$(docker compose -p "$COMPOSE_PROJECT" port "$SERVICE" "$CONTAINER_PORT" 2>/dev/null || true)"
+    [[ "$PUBLISHED" == "127.0.0.1:$PORT" || "$PUBLISHED" == "0.0.0.0:$PORT" ]] \
+      || fail "compose project '$COMPOSE_PROJECT' doesn't publish $SERVICE on port $PORT (publishes: '${PUBLISHED:-nothing}')"
+  else
+    # No compose: whatever listens on the port can't be a tunnel to another machine.
+    LISTENER="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR == 2 {print $1}')"
+    [[ -n "$LISTENER" ]] || fail "nothing listens on port $PORT"
+    case "$LISTENER" in
+      ssh | autossh | sshpass | kubectl | gcloud | cloud_sql* | cloud-sql* | socat | aws | session-m*)
+        fail "port $PORT is served by '$LISTENER', which looks like a tunnel to another machine" ;;
+    esac
+  fi
 fi
 
 command -v mysql >/dev/null || fail "mysql client not found"
@@ -94,13 +139,19 @@ MYSQL=(mysql --protocol=TCP -h "$HOST" -P "$PORT" -u "$RO_USER" --database "$DB_
 
 # 3. The user: if it had any write privilege, it isn't used.
 GRANTS="$("${MYSQL[@]}" --batch --skip-column-names -e "SHOW GRANTS FOR CURRENT_USER()")" || fail "can't connect with the read-only user"
-if grep -Eiwq 'ALL|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|INDEX|EXECUTE|FILE|SUPER|GRANT OPTION' <<<"$GRANTS"; then
-  fail "user $RO_USER has write privileges; use one with SELECT only"
+# Allowed: SELECT, SHOW VIEW, USAGE. Anything else (static or MySQL 8 dynamic *_ADMIN) refuses.
+if grep -Eiwq 'ALL|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|INDEX|EXECUTE|FILE|SUPER|GRANT OPTION|TRIGGER|EVENT|LOCK|RELOAD|SHUTDOWN|PROCESS|REFERENCES|PROXY|REPLICATION|[A-Z_]+_ADMIN|SET_USER_ID' <<<"$GRANTS"; then
+  fail "user $RO_USER has write or admin privileges; use one with SELECT only"
+fi
+# A granted role hides its privileges from SHOW GRANTS: refuse it.
+if grep -Eq '^GRANT `[^`]+`@' <<<"$GRANTS"; then
+  fail "user $RO_USER has roles granted; use one with direct SELECT grants only"
 fi
 
 OUT="$(mktemp)"
 trap 'rm -f "$OUT"' EXIT
 "${MYSQL[@]}" --table -e "$SQL" >"$OUT"
+echo "db-query: environment $ENV_NAME, database $DB_NAME" >&2
 head -n 200 "$OUT"
 if (( $(wc -l <"$OUT") > 200 )); then
   echo "db-query: output trimmed to 200 lines; use aggregates or LIMIT." >&2

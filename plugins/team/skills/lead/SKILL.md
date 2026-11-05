@@ -60,7 +60,7 @@ Every teammate is a full instance that re-reads its context on every turn: the s
 - Messages arrive on the recipient's **next turn**. Don't treat a message as lost or ask for it to be resent until a turn has passed.
 - End-of-turn notifications truncate long text. Ask for long reports in numbered messages.
 - Don't implement what belongs to a teammate. If someone gets stuck, redirect them or create a replacement.
-- Teammates' permission requests reach you: don't approve actions on remote databases or outside the brief's scope.
+- Teammates' permission requests reach you: don't approve writes on remote databases or actions outside the brief's scope. Reads through `db-query --env` are fine in any environment.
 
 ### Closing
 
